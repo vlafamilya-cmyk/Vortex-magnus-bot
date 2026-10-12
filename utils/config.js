@@ -1,0 +1,46 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+function loadConfig() {
+  const rootDir = path.join(__dirname, '..');
+  const file = path.join(rootDir, 'config.json');
+  const base = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // Use a normal in-project path; Railway can mount a Volume at /app/data.
+  const dataDir = path.join(rootDir, 'data');
+  fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+
+  let sessionSecret = process.env.SESSION_SECRET || '';
+  const secretFile = path.join(dataDir, 'session-secret');
+  if (!sessionSecret) {
+    try {
+      sessionSecret = fs.readFileSync(secretFile, 'utf8').trim();
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (!sessionSecret || sessionSecret.length < 32) {
+      sessionSecret = crypto.randomBytes(48).toString('hex');
+      fs.writeFileSync(secretFile, sessionSecret, { mode: 0o600, flag: 'w' });
+      try { fs.chmodSync(secretFile, 0o600); } catch {}
+    }
+  }
+
+  const admins = (process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
+  return {
+    ...base,
+    botName: process.env.BOT_NAME || base.botName || 'VORTEX',
+    prefix: process.env.PREFIX || base.prefix || '*',
+    adminIDs: [...new Set([...(base.adminIDs || []), ...admins].map(String))],
+    dataDir,
+    port: Number(process.env.PORT) || 3000,
+    dashboardPassword: process.env.DASHBOARD_PASSWORD || 'vortex110',
+    sessionSecret,
+    appStateJson: process.env.APPSTATE_JSON || ''
+  };
+}
+function validateConfig(c) {
+  if (!c || typeof c.prefix !== 'string' || !c.prefix.trim() || c.prefix.length > 12) throw new Error('Invalid prefix');
+  if (!Array.isArray(c.adminIDs) || c.adminIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs');
+  return true;
+}
+module.exports = { loadConfig, validateConfig };
