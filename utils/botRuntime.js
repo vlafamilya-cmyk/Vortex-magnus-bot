@@ -5,6 +5,7 @@ const { validateAppState } = require('./appState');
 const { atomicWrite } = require('./atomicFile');
 const { ReconnectManager } = require('./reconnect');
 const { AppStateRefreshManager } = require('./appStateRefresh');
+const { NicknameGuard } = require('./nicknameGuard');
 
 function createBotRuntime({ config, logger }) {
   const cmdsDir = path.join(__dirname, '..', 'cmds');
@@ -23,6 +24,7 @@ function createBotRuntime({ config, logger }) {
   let appStateRefreshManager;
   let mqttStatus = 'offline';
   let manualDisconnect = false;
+  const nicknameGuard = new NicknameGuard({ getApi: () => api, logger, nickname: '𝑽𝑶𝑹𝑻𝑬𝑿 →' });
 
   const runtime = {
     getState() {
@@ -164,6 +166,7 @@ function createBotRuntime({ config, logger }) {
       if (!manualDisconnect) reconnectManager?.schedule();
     },
     async handleEvent(event) {
+      nicknameGuard.handle(event).catch(e => logger.warn('NICKNAME_GUARD_FAILED', { error: String(e.message || e).slice(0, 200) }));
       if (!event || event.type !== 'message' || !event.body || !event.threadID) return;
       const body = String(event.body);
       if (!body.startsWith(config.prefix)) return;
