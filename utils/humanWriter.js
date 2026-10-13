@@ -31,7 +31,7 @@ function createHumanWriter({ logger = console, onSafetyStop = () => {}, ...optio
   }
 
   function contentKey(value) {
-    try { return typeof value === 'string' ? value.replace(/\\s+/g, ' ').trim() : JSON.stringify(value); }
+    try { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : JSON.stringify(value); }
     catch { return String(value); }
   }
 
@@ -67,7 +67,7 @@ function createHumanWriter({ logger = console, onSafetyStop = () => {}, ...optio
   function handleSendFailure(error, threadID) {
     const message = String(error?.message || error);
     const normalized = message.toLowerCase();
-    const authFailure = /checkpoint|login approval|login required|invalid appstate|invalid cookie|cookie.{0,20}(expired|invalid)|session.{0,20}(expired|invalid)|not logged in|authentication failed|account disabled|two.factor|\\b401\\b|\\b403\\b|please log in/.test(normalized);
+    const authFailure = /checkpoint|login approval|login required|invalid appstate|invalid cookie|cookie.{0,20}(expired|invalid)|session.{0,20}(expired|invalid)|not logged in|authentication failed|account disabled|two.factor|\b401\b|\b403\b|please log in/.test(normalized);
     if (authFailure) {
       triggerPause('session-authentication', Infinity, 'session');
     } else if (/rate.?limit|too many|temporar|spam|blocked|try again|restricted|unusual activity|we limit how often|automated behavior|please wait before you try again/.test(normalized)) {
