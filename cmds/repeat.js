@@ -31,7 +31,7 @@ module.exports = {
     const match = normalizeArabic(durationToken).match(/^(\d+)(ث|ثانيه|ثواني|د|دقيقه|دقائق|s|sec|m|min)$/);
     if (!match) {
       return api.sendMessage(
-        'الاستخدام: فورتكس تشغيل <النص> <المدة>\nمثال: فورتكس تشغيل هسم كششكك 25ث\nاستخدم د للدقائق، مثل 2د. للإيقاف: فورتكس إيقاف',
+        'الاستخدام: ' + event.config.prefix + 'تشغيل <النص> <المدة>\nمثال: ' + event.config.prefix + 'تشغيل هسم كششكك 25ث\nاستخدم د للدقائق، مثل 2د. للإيقاف: ' + event.config.prefix + 'إيقاف',
         event.threadID,
         event.messageID
       );
@@ -66,7 +66,7 @@ module.exports = {
 
     const shownInterval = isMinutes ? amount + ' دقيقة/دقائق' : amount + ' ثانية/ثوانٍ';
     return api.sendMessage(
-      '✅ تم تشغيل الإرسال المتكرر. سأرسل الرسالة كل ' + shownInterval + '.\nلإيقافه اكتب: فورتكس إيقاف',
+      '✅ تم تشغيل الإرسال المتكرر. سأرسل الرسالة كل ' + shownInterval + '.\nلإيقافه اكتب: ' + event.config.prefix + 'إيقاف',
       event.threadID,
       event.messageID
     );
