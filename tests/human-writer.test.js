@@ -33,3 +33,13 @@ test('human writer applies a local per-minute cap without retrying rejected send
   assert.equal(calls, 1);
   assert.equal(second.suppressed, true);
 });
+
+test('human writer does not suppress the same reply for a different command message', async () => {
+  const sent = [];
+  const api = { sendMessage: async (body, threadID, messageID) => { sent.push([body, threadID, messageID]); return true; } };
+  const writer = createHumanWriter({ minIntervalMs: 0, globalIntervalMs: 0, duplicateWindowMs: 10000 });
+  const wrapped = writer.wrap(api);
+  await wrapped.sendMessage('pong', 'thread-1', 'message-1');
+  await wrapped.sendMessage('pong', 'thread-1', 'message-2');
+  assert.equal(sent.length, 2);
+});
