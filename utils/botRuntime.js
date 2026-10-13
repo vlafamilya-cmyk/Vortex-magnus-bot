@@ -7,6 +7,7 @@ const { ReconnectManager } = require('./reconnect');
 const { AppStateRefreshManager } = require('./appStateRefresh');
 const { NicknameGuard } = require('./nicknameGuard');
 const { createHumanWriter } = require('./humanWriter');
+const { isAuthorizedSender } = require('./accessControl');
 
 function createBotRuntime({ config, logger }) {
   const cmdsDir = path.join(__dirname, '..', 'cmds');
@@ -313,6 +314,9 @@ function createBotRuntime({ config, logger }) {
       nicknameGuard.handle(event).catch(e => logger.warn('NICKNAME_GUARD_FAILED', { error: String(e.message || e).slice(0, 200) }));
       if (!event || !['message', 'message_reply', 'messageCreate'].includes(event.type) || !event.body || !event.threadID) return;
       const body = String(event.body).trim();
+      // Strict allow-list: only IDs configured as Owners/Admins may invoke commands or answer command prompts.
+      // This intentionally keeps ordinary group messages from triggering command handlers or replies.
+      if (!isAuthorizedSender(event.senderID, config.ownerIDs || [config.ownerID], config.adminIDs || [])) return;
       // Stateful commands may consume plain numeric/confirmation replies without the command prefix.
       const replySender = String(event.senderID || '');
       const replyIsOwner = (config.ownerIDs || [config.ownerID]).filter(Boolean).includes(replySender);
