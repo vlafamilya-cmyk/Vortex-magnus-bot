@@ -29,7 +29,8 @@ function createHumanWriter({ logger = console, ...options } = {}) {
         if (property === 'sendMessage' && typeof target.sendMessage === 'function') {
           return (...args) => {
             const threadID = String(args[1] ?? 'unknown');
-            const key = threadID + ':' + contentKey(args[0]);
+            const messageToken = typeof args[2] === 'string' || typeof args[2] === 'number' ? String(args[2]) : contentKey(args[0]);
+            const key = threadID + ':' + messageToken + ':' + contentKey(args[0]);
             const now = Date.now();
             prune(now);
             if (recentMessages.has(key)) {
