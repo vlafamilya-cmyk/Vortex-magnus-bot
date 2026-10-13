@@ -95,7 +95,7 @@ class AppStateRefreshManager {
     } catch (error) {
       this.stats.failureCount += 1;
       this.stats.lastFailureAt = new Date().toISOString();
-      this.stats.lastError = String(error.message || error).slice(0, 240);
+      this.stats.lastError = String(error.message || '').includes('getAppState') ? 'FCA client does not expose getAppState().' : 'Refresh failed. Check the connection and FCA runtime status.';
       this.logger.warn('APPSTATE_REFRESH_FAILED', { manual, count: this.stats.failureCount, error: this.stats.lastError });
       throw error;
     } finally {
