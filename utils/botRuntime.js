@@ -286,7 +286,7 @@ function createBotRuntime({ config, logger }) {
     },
     async handleEvent(event) {
       nicknameGuard.handle(event).catch(e => logger.warn('NICKNAME_GUARD_FAILED', { error: String(e.message || e).slice(0, 200) }));
-      if (!event || event.type !== 'message' || !event.body || !event.threadID) return;
+      if (!event || !['message', 'message_reply', 'messageCreate'].includes(event.type) || !event.body || !event.threadID) return;
       const body = String(event.body).trim();
       // All commands, including repeating-message controls, must use the dashboard-configured prefix.
       if (!body.startsWith(config.prefix)) return;
