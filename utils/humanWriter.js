@@ -19,7 +19,7 @@ function createHumanWriter({ logger = console, ...options } = {}) {
   }
 
   function contentKey(value) {
-    try { return typeof value === 'string' ? value.replace(/\\s+/g, ' ').trim() : JSON.stringify(value); }
+    try { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : JSON.stringify(value); }
     catch { return String(value); }
   }
 
