@@ -61,6 +61,45 @@ function ensureAppStateRefreshPanel() {
     } finally { button.disabled = false; button.textContent = 'Refresh now ↻'; }
   });
 }
+function ensureSessionHealthPanel() {
+  const overview = $('#overview');
+  if (!overview || $('#session-health-panel')) return;
+  const hero = overview.querySelector('.hero');
+  const panel = document.createElement('div');
+  panel.id = 'session-health-panel';
+  panel.className = 'panel';
+  panel.style.marginTop = '16px';
+  panel.style.marginBottom = '16px';
+  panel.innerHTML = `
+    <div class="panel-head"><div><p class="eyebrow">SESSION MONITOR</p><h3 id="session-health-title">Checking session…</h3></div><span id="session-health-badge" class="role-badge">UNKNOWN</span></div>
+    <p id="session-health-message" class="muted">Reading the current FCA connection state.</p>
+    <div class="button-row" id="session-health-actions" hidden><button id="session-health-open-appstate" class="primary">Open AppState settings</button></div>`;
+  if (hero) hero.after(panel); else overview.prepend(panel);
+  $('#session-health-open-appstate')?.addEventListener('click', () => {
+    const link = $('#nav a[href="#appstate"]');
+    if (currentRole !== 'owner' || !link) return;
+    link.click();
+  });
+}
+function updateSessionHealth(s) {
+  ensureSessionHealthPanel();
+  const title = $('#session-health-title');
+  const badge = $('#session-health-badge');
+  const message = $('#session-health-message');
+  const actions = $('#session-health-actions');
+  if (!title || !badge || !message) return;
+  const needsAttention = !!s.requiresSessionUpdate || s.sessionHealth === 'needs-attention' || s.status === 'needs-attention';
+  const connected = s.status === 'connected';
+  title.textContent = needsAttention ? 'Session needs attention' : connected ? 'Bot session connected' : s.status === 'connecting' ? 'Connection in progress' : 'Bot session disconnected';
+  badge.textContent = needsAttention ? 'ACTION NEEDED' : connected ? 'CONNECTED' : String(s.sessionHealth || s.status || 'UNKNOWN').toUpperCase();
+  badge.classList.toggle('owner', connected);
+  badge.style.background = needsAttention ? '#3a2027' : connected ? '#14332d' : '#292316';
+  badge.style.color = needsAttention ? '#ff9bab' : connected ? '#78efbd' : '#e6c77e';
+  message.textContent = s.sessionMessage || (connected
+    ? 'The bot connection is active. Facebook controls whether the green online indicator appears.'
+    : 'The bot is not currently connected. Check the connection panel and recent logs.');
+  if (actions) actions.hidden = currentRole !== 'owner' || !needsAttention;
+}
 let appStateRefreshSnapshot = null;
 function updateAppStateRefresh(s) {
   if (currentRole !== 'owner' || !s) return;
@@ -100,8 +139,7 @@ async function status() {
     ['Uptime', duration(s.uptimeMs)], ['Loaded commands', s.commands], ['Last error', s.lastError || 'None'],
     ['Last reconnect', fmt(s.lastDisconnect)]].map(([k, v]) => `<div class="detail-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join('');
   $('#footer-version').textContent = 'v' + s.version;
-  updateAppStateRefresh(s.appStateRefresh);
-}
+  updateSessionHealth(s);\n  updateAppStateRefresh(s.appStateRefresh);\n}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function commands() {
   const d = await api('/api/commands');
