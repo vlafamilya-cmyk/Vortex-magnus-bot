@@ -28,8 +28,46 @@ function createBotRuntime({ config, logger }) {
   const nicknameGuard = new NicknameGuard({ getApi: () => api, logger, nickname: '𝑽𝑶𝑹𝑻𝑬𝑿 →' });
   const humanWriter = createHumanWriter({ logger, minIntervalMs: 1200, globalIntervalMs: 900, duplicateWindowMs: 8000, maxPerMinute: 20 });
   const seenCommandMessages = new Map();
+  const repeatingMessages = new Map();
+  function clearRepeatingMessages() {
+    for (const task of repeatingMessages.values()) clearInterval(task.timer);
+    repeatingMessages.clear();
+  }
 
   const runtime = {
+    startRepeatingMessage({ threadID, senderID, message, intervalMs }) {
+      const thread = String(threadID);
+      if (repeatingMessages.has(thread)) return { started: false, reason: 'already-running' };
+      if (!api || typeof api.sendMessage !== 'function') return { started: false, reason: 'offline' };
+      if (!message || !Number.isFinite(intervalMs) || intervalMs < 10000 || intervalMs > 86400000) {
+        return { started: false, reason: 'invalid-input' };
+      }
+      const task = { senderID: String(senderID), message: String(message), intervalMs, busy: false, timer: null };
+      task.timer = setInterval(async () => {
+        if (task.busy || !api || status !== 'connected') return;
+        task.busy = true;
+        try {
+          await humanWriter.wrap(api).sendMessage(task.message, thread);
+        } catch (error) {
+          logger.warn('REPEATING_MESSAGE_FAILED', { threadID: thread, error: String(error?.message || error).slice(0, 160) });
+        } finally {
+          task.busy = false;
+        }
+      }, intervalMs);
+      task.timer.unref?.();
+      repeatingMessages.set(thread, task);
+      logger.info('REPEATING_MESSAGE_STARTED', { threadID: thread, intervalMs });
+      return { started: true, intervalMs };
+    },
+    stopRepeatingMessage(threadID) {
+      const thread = String(threadID);
+      const task = repeatingMessages.get(thread);
+      if (!task) return { stopped: false, reason: 'not-running' };
+      clearInterval(task.timer);
+      repeatingMessages.delete(thread);
+      logger.info('REPEATING_MESSAGE_STOPPED', { threadID: thread });
+      return { stopped: true };
+    },
     getState() {
       return {
         bot: config.botName, prefix: config.prefix, status, fcaStatus: status, mqttStatus,
@@ -167,6 +205,7 @@ function createBotRuntime({ config, logger }) {
       }
     },
     async disconnected(reason) {
+      clearRepeatingMessages();
       if (status === 'offline' && !api) return;
       lastDisconnect = new Date().toISOString();
       status = 'offline';
@@ -228,6 +267,7 @@ function createBotRuntime({ config, logger }) {
       }
     },
     async disconnect() {
+      clearRepeatingMessages();
       manualDisconnect = true;
       reconnectManager?.stop();
       if (api && typeof api.logout === 'function') {
