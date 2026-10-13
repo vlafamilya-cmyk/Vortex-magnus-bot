@@ -47,6 +47,7 @@ Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(a
 ## Security notes
 - Dashboard login is session-based, with HttpOnly/SameSite cookies, login rate limiting, and CSRF token checks on mutating API calls. The `DASHBOARD_PASSWORD` login is the owner role with full controls. If `ADMIN_DASHBOARD_PASSWORD` is configured, that separate login is read-only and cannot edit commands, credentials, settings, connections, or administrator membership.
 - AppState is validated before storage and never returned by an API or written to logs. Local data should be kept on a private volume with restricted permissions.
+- The owner-only AppState panel includes **Remove session**. It disconnects the bot, removes the locally saved `data/appstate.json` and AppState-refresh statistics, clears session-related runtime counters, and records a marker so the bot does not silently reload `APPSTATE_JSON` after a restart. A new AppState must be saved before reconnecting. It does not remove commands, dashboard settings, admin lists, or revoke the Facebook session on other devices.
 - Dashboard command editing runs JavaScript with the bot process's privileges. Only use it with trusted administrators.
 - Express's default in-memory session store is suitable for a single-process starter, not a multi-instance production deployment. Use a persistent external session store for horizontal scaling.
 - Use Messenger normally, respect rate limits and account restrictions, and stop if the platform rejects access.
