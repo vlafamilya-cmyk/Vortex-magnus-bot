@@ -21,6 +21,7 @@ function createBotRuntime({ config, logger }) {
   let connecting = false;
   let appStatePresent = false;
   let appState = null;
+  let sessionCleared = false;
   let reconnectManager;
   let appStateRefreshManager;
   let mqttStatus = 'offline';
@@ -31,6 +32,17 @@ function createBotRuntime({ config, logger }) {
   function isSessionAuthError(value) {
     const message = String(value?.message || value || '').toLowerCase();
     return /checkpoint|login approval|login required|invalid appstate|invalid cookie|cookie.{0,20}(expired|invalid)|session.{0,20}(expired|invalid)|not logged in|authentication failed|account disabled|two.factor|\b401\b|\b403\b|please log in/.test(message);
+  }
+  async function initializeAppStateRefreshManager() {
+    if (appStateRefreshManager) return;
+    appStateRefreshManager = new AppStateRefreshManager({
+      dataDir: config.dataDir,
+      getApi: () => api,
+      ensureConnected: async () => { if (!api) await runtime.connect(); },
+      setAppState: value => { appState = value; appStatePresent = true; },
+      logger
+    });
+    await appStateRefreshManager.init();
   }
   function setSessionAttention(reason) {
     requiresSessionUpdate = true;
@@ -128,8 +140,11 @@ function createBotRuntime({ config, logger }) {
       const file = path.join(config.dataDir, 'appstate.json');
       await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
       await atomicWrite(file, JSON.stringify(parsed), 0o600);
+      await fs.rm(path.join(config.dataDir, '.appstate-cleared'), { force: true });
       appState = parsed;
       appStatePresent = true;
+      sessionCleared = false;
+      await initializeAppStateRefreshManager();
       requiresSessionUpdate = false;
       sessionHealth = 'checking';
       sessionMessage = 'New AppState saved. Checking the session connection.';
@@ -151,6 +166,8 @@ function createBotRuntime({ config, logger }) {
       lastError = null;
       try {
         if (!appState) {
+          try { await fs.access(path.join(config.dataDir, '.appstate-cleared')); sessionCleared = true; } catch {}
+          if (sessionCleared) throw new Error('No AppState saved. Add a new session in the dashboard.');
           let raw = config.appStateJson;
           if (!raw && config.appStateFile) raw = await fs.readFile(config.appStateFile, 'utf8');
           if (!raw) {
@@ -321,6 +338,31 @@ function createBotRuntime({ config, logger }) {
       lastDisconnect = new Date().toISOString();
       return { status, mqttStatus };
     },
+    async clearAppStateSession() {
+      if (appStateRefreshManager) {
+        await appStateRefreshManager.stopAndWait();
+        appStateRefreshManager = null;
+      }
+      await runtime.disconnect();
+      const appStateFile = path.join(config.dataDir, 'appstate.json');
+      const refreshStatsFile = path.join(config.dataDir, 'appstate-refresh-stats.json');
+      await fs.rm(appStateFile, { force: true });
+      await fs.rm(refreshStatsFile, { force: true });
+      await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
+      await atomicWrite(path.join(config.dataDir, '.appstate-cleared'), new Date().toISOString(), 0o600);
+      appState = null;
+      appStatePresent = false;
+      sessionCleared = true;
+      requiresSessionUpdate = false;
+      sessionHealth = 'no-session';
+      sessionMessage = 'Session removed. Paste a new AppState to connect again.';
+      lastError = null;
+      lastConnect = null;
+      reconnects = 0;
+      clearRepeatingMessages();
+      logger.warn('APPSTATE_SESSION_REMOVED', { localSessionDataRemoved: true });
+      return { status: 'offline', appStateConfigured: false, sessionCleared: true };
+    },
     async refreshAppStateNow() {
       if (!appStateRefreshManager) throw new Error('AppState refresh manager is not ready');
       return appStateRefreshManager.refresh({ manual: true });
@@ -330,14 +372,7 @@ function createBotRuntime({ config, logger }) {
       await runtime.disconnect();
     },
     async start() {
-      appStateRefreshManager = new AppStateRefreshManager({
-        dataDir: config.dataDir,
-        getApi: () => api,
-        ensureConnected: async () => { if (!api) await runtime.connect(); },
-        setAppState: value => { appState = value; appStatePresent = true; },
-        logger
-      });
-      await appStateRefreshManager.init();
+      await initializeAppStateRefreshManager();
       reconnectManager = new ReconnectManager({
         connect: () => runtime.connect(), logger,
         baseMs: config.connection?.baseBackoffMs || 2000,
