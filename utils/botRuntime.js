@@ -6,6 +6,7 @@ const { atomicWrite } = require('./atomicFile');
 const { ReconnectManager } = require('./reconnect');
 const { AppStateRefreshManager } = require('./appStateRefresh');
 const { NicknameGuard } = require('./nicknameGuard');
+const { createHumanWriter } = require('./humanWriter');
 
 function createBotRuntime({ config, logger }) {
   const cmdsDir = path.join(__dirname, '..', 'cmds');
@@ -25,6 +26,8 @@ function createBotRuntime({ config, logger }) {
   let mqttStatus = 'offline';
   let manualDisconnect = false;
   const nicknameGuard = new NicknameGuard({ getApi: () => api, logger, nickname: '𝑽𝑶𝑹𝑻𝑬𝑿 →' });
+  const humanWriter = createHumanWriter({ logger, minIntervalMs: 1200, globalIntervalMs: 900, duplicateWindowMs: 8000, maxPerMinute: 20 });
+  const seenCommandMessages = new Map();
 
   const runtime = {
     getState() {
@@ -39,7 +42,7 @@ function createBotRuntime({ config, logger }) {
           lastFailureAt: null, lastError: null, nextRefreshAt: null, refreshing: false,
           intervalMs: 3 * 60 * 60 * 1000
         },
-        botID: null, version: require('../package.json').version
+        outboundProtection: humanWriter.getState(), botID: null, version: require('../package.json').version
       };
     },
     getCommands() {
@@ -56,6 +59,15 @@ function createBotRuntime({ config, logger }) {
     refreshCommands() {
       loaded = loadCommands(cmdsDir, logger);
       return { count: loaded.unique.length, errors: loaded.errors };
+    },
+    async setAdminIDs(ids) {
+      if (!Array.isArray(ids) || ids.some(id => !/^\\d{1,30}$/.test(String(id)))) throw new Error('Invalid admin IDs');
+      config.adminIDs = [...new Set(ids.map(String).filter(id => id !== String(config.ownerID || '')))];
+      await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
+      await atomicWrite(path.join(config.dataDir, 'settings.json'), JSON.stringify({
+        botName: config.botName, prefix: config.prefix, language: config.language, adminIDs: config.adminIDs
+      }, null, 2), 0o600);
+      return { admins: [...config.adminIDs] };
     },
     async saveAppState(raw, connect = false) {
       const parsed = validateAppState(raw);
@@ -170,21 +182,37 @@ function createBotRuntime({ config, logger }) {
       if (!event || event.type !== 'message' || !event.body || !event.threadID) return;
       const body = String(event.body);
       if (!body.startsWith(config.prefix)) return;
-      const [rawName, ...args] = body.slice(config.prefix.length).trim().split(/\s+/);
+      const [rawName, ...args] = body.slice(config.prefix.length).trim().split(/\\s+/);
       if (!rawName) return;
       const cmd = loaded.commands.get(rawName.toLowerCase());
       if (!cmd) return;
       const sender = String(event.senderID || '');
-      if (cmd.adminOnly && !config.adminIDs.includes(sender)) {
-        api?.sendMessage?.('⛔ هذا الأمر للمسؤولين فقط.', event.threadID, event.messageID);
+      const isOwner = !!config.ownerID && sender === String(config.ownerID);
+      const isAdmin = isOwner || config.adminIDs.includes(sender);
+      if (event.messageID) {
+        const now = Date.now();
+        for (const [key, at] of seenCommandMessages) if (now - at > 300000) seenCommandMessages.delete(key);
+        const dedupeKey = String(event.threadID) + ':' + String(event.messageID);
+        if (seenCommandMessages.has(dedupeKey)) {
+          logger.warn('DUPLICATE_COMMAND_SUPPRESSED', { command: cmd.name, threadID: String(event.threadID) });
+          return;
+        }
+        seenCommandMessages.set(dedupeKey, now);
+        if (seenCommandMessages.size > 2000) {
+          const oldest = [...seenCommandMessages.entries()].sort((a, b) => a[1] - b[1]).slice(0, 500);
+          for (const [key] of oldest) seenCommandMessages.delete(key);
+        }
+      }
+      if (cmd.adminOnly && !isAdmin) {
+        humanWriter.wrap(api).sendMessage('⛔ هذا الأمر للمسؤولين فقط.', event.threadID, event.messageID).catch(() => {});
         return;
       }
-      const ctx = { ...event, args, commandName: rawName, startedAt: Date.now(), config, runtime };
+      const ctx = { ...event, args, commandName: rawName, startedAt: Date.now(), config, runtime, isOwner, isAdmin };
       try {
-        await cmd.execute(api, ctx);
-        logger.command('COMMAND_OK', { name: cmd.name, senderID: sender });
+        await cmd.execute(humanWriter.wrap(api), ctx);
+        logger.command('COMMAND_OK', { name: cmd.name, senderID: sender, role: isOwner ? 'owner' : isAdmin ? 'admin' : 'user' });
       } catch (e) {
-        logger.error('COMMAND_FAILED', { name: cmd.name, error: e.message });
+        logger.error('COMMAND_FAILED', { name: cmd.name, error: String(e.message || e).slice(0, 200) });
       }
     },
     async disconnect() {
