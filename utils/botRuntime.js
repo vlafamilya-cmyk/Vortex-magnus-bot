@@ -203,6 +203,18 @@ function createBotRuntime({ config, logger }) {
           for (const [key] of oldest) seenCommandMessages.delete(key);
         }
       }
+      // Give every recognized command a natural typing pause before it responds.
+      // FCA exposes sendTypingIndicator(threadID, callback) on supported versions.
+      try {
+        if (typeof api?.sendTypingIndicator === 'function') {
+          api.sendTypingIndicator(event.threadID, () => {});
+        }
+      } catch (error) {
+        logger.warn('TYPING_INDICATOR_FAILED', { error: String(error?.message || error).slice(0, 120) });
+      }
+      const typingDelayMs = 4000 + Math.floor(Math.random() * 2001);
+      await new Promise(resolve => setTimeout(resolve, typingDelayMs));
+
       if (cmd.adminOnly && !isAdmin) {
         humanWriter.wrap(api).sendMessage('⛔ هذا الأمر للمسؤولين فقط.', event.threadID, event.messageID).catch(() => {});
         return;
