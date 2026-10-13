@@ -22,14 +22,18 @@ function loadConfig() {
     }
   }
   const envAdmins = (process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
+  const envOwnerIDs = (process.env.OWNER_IDS || process.env.OWNER_ID || '').split(',').map(x => x.trim()).filter(Boolean);
+  const savedOwnerIDsExist = Array.isArray(saved.ownerIDs);
+  const ownerIDs = [...new Set((savedOwnerIDsExist ? saved.ownerIDs.map(String) : [...envOwnerIDs, ...(saved.ownerID || base.ownerID ? [String(saved.ownerID || base.ownerID)] : [])]).filter(Boolean))].slice(0, 3);
   const savedAdminsExist = Array.isArray(saved.adminIDs);
   const adminIDs = savedAdminsExist ? saved.adminIDs.map(String) : [...(base.adminIDs || []).map(String), ...envAdmins];
   return {
     ...base, ...saved,
     botName: process.env.BOT_NAME || saved.botName || base.botName || 'VORTEX',
     prefix: process.env.PREFIX || saved.prefix || base.prefix || '*',
-    adminIDs: [...new Set(adminIDs)],
-    ownerID: String(process.env.OWNER_ID || saved.ownerID || base.ownerID || ''),
+    adminIDs: [...new Set(adminIDs)].filter(id => !ownerIDs.includes(id)).slice(0, 20),
+    ownerIDs,
+    ownerID: ownerIDs[0] || '',
     adminDashboardPassword: process.env.ADMIN_DASHBOARD_PASSWORD || '',
     dataDir,
     port: Number(process.env.PORT) || 3000,
@@ -41,9 +45,12 @@ function loadConfig() {
 }
 function validateConfig(c) {
   if (!c || typeof c.prefix !== 'string' || !c.prefix.trim() || c.prefix.length > 12) throw new Error('Invalid prefix');
-  if (!Array.isArray(c.adminIDs) || c.adminIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs');
-  if (c.ownerID && !/^\d{1,30}$/.test(String(c.ownerID))) throw new Error('Invalid owner ID');
-  if (c.ownerID && c.adminIDs.includes(String(c.ownerID))) c.adminIDs = c.adminIDs.filter(id => id !== String(c.ownerID));
+  if (!Array.isArray(c.ownerIDs)) c.ownerIDs = c.ownerID ? [String(c.ownerID)] : [];
+  if (c.ownerIDs.length > 3 || c.ownerIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid owner IDs (maximum 3)');
+  c.ownerIDs = [...new Set(c.ownerIDs)];
+  c.ownerID = c.ownerIDs[0] || '';
+  if (!Array.isArray(c.adminIDs) || c.adminIDs.length > 20 || c.adminIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs (maximum 20)');
+  c.adminIDs = [...new Set(c.adminIDs)].filter(id => !c.ownerIDs.includes(id));
   return true;
 }
 module.exports = { loadConfig, validateConfig };

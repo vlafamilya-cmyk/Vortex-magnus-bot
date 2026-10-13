@@ -137,12 +137,37 @@ function createBotRuntime({ config, logger }) {
     },
     async setAdminIDs(ids) {
       if (!Array.isArray(ids) || ids.some(id => !/^\d{1,30}$/.test(String(id)))) throw new Error('Invalid admin IDs');
-      config.adminIDs = [...new Set(ids.map(String).filter(id => id !== String(config.ownerID || '')))];
+      const next = [...new Set(ids.map(String).filter(id => !(config.ownerIDs || [config.ownerID]).includes(id)))];
+      if (next.length > 20) throw new Error('Maximum of 20 regular Admins reached');
+      config.adminIDs = next;
       await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
       await atomicWrite(path.join(config.dataDir, 'settings.json'), JSON.stringify({
-        botName: config.botName, prefix: config.prefix, language: config.language, adminIDs: config.adminIDs
+        botName: config.botName, prefix: config.prefix, language: config.language,
+        ownerIDs: config.ownerIDs || (config.ownerID ? [config.ownerID] : []), adminIDs: config.adminIDs
       }, null, 2), 0o600);
       return { admins: [...config.adminIDs] };
+    },
+    async setOwnerIDs(ids) {
+      if (!Array.isArray(ids) || ids.some(id => !/^\d{1,30}$/.test(String(id)))) throw new Error('Invalid Owner IDs');
+      const next = [...new Set(ids.map(String))];
+      if (next.length < 1 || next.length > 3) throw new Error('Owner list must contain 1 to 3 IDs');
+      const oldOwners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
+      const oldOwnerID = config.ownerID;
+      const oldAdmins = config.adminIDs;
+      config.ownerIDs = next;
+      config.ownerID = next[0];
+      config.adminIDs = config.adminIDs.filter(id => !next.includes(id));
+      await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
+      try {
+        await atomicWrite(path.join(config.dataDir, 'settings.json'), JSON.stringify({
+          botName: config.botName, prefix: config.prefix, language: config.language,
+          ownerIDs: config.ownerIDs, adminIDs: config.adminIDs
+        }, null, 2), 0o600);
+      } catch (error) {
+        config.ownerIDs = oldOwners; config.ownerID = oldOwnerID; config.adminIDs = oldAdmins;
+        throw error;
+      }
+      return { owners: [...config.ownerIDs], ownerID: config.ownerID, admins: [...config.adminIDs] };
     },
     async saveAppState(raw, connect = false) {
       const parsed = validateAppState(raw);
@@ -296,7 +321,7 @@ function createBotRuntime({ config, logger }) {
       const cmd = loaded.commands.get(rawName.toLowerCase());
       if (!cmd) return;
       const sender = String(event.senderID || '');
-      const isOwner = !!config.ownerID && sender === String(config.ownerID);
+      const isOwner = (config.ownerIDs || [config.ownerID]).filter(Boolean).includes(sender);
       const isAdmin = isOwner || config.adminIDs.includes(sender);
       if (event.messageID) {
         const now = Date.now();

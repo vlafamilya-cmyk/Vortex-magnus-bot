@@ -168,8 +168,13 @@ async function commands() {
 async function admins() {
   const d = await api('/api/admins');
   ownerID = d.ownerID || '';
-  $('#owner-id').textContent = ownerID || 'Not configured (set OWNER_ID)';
-  $('#admin-list').innerHTML = d.admins.map(id => '<span class="pill">' + esc(id) + ' <button data-remove-admin="' + esc(id) + '" aria-label="Remove admin ' + esc(id) + '">×</button></span>').join('') || '<p class="muted">No admin IDs configured.</p>';
+  const owners = d.owners || (ownerID ? [ownerID] : []);
+  $('#owner-count').textContent = owners.length + ' / 3';
+  $('#admin-count').textContent = d.admins.length + ' / 20';
+  $('#owner-list').innerHTML = owners.map(id => '<span class="pill">' + esc(id) + (owners.length > 1 ? ' <button data-remove-owner="' + esc(id) + '" aria-label="Remove owner ' + esc(id) + '">×</button>' : '') + '</span>').join('') || '<p class="muted">No Owners configured.</p>';
+  $('#admin-list').innerHTML = d.admins.map(id => '<span class="pill">' + esc(id) + ' <button data-remove-admin="' + esc(id) + '" aria-label="Remove admin ' + esc(id) + '">×</button></span>').join('') || '<p class="muted">No regular Admin IDs configured.</p>';
+  $('#owner-input-id').disabled = owners.length >= 3;
+  $('#admin-id').disabled = d.admins.length >= 20;
 }
 async function settings() {
   const s = await api('/api/settings'); $('#bot-name').value = s.botName; $('#prefix').value = s.prefix; $('#language').value = s.language || 'ar';
@@ -221,6 +226,11 @@ document.addEventListener('click', async e => {
   const del = e.target.closest('[data-delete]');
   if (del && confirm('Delete command ' + del.dataset.delete + '?')) {
     try { await api('/api/commands/' + encodeURIComponent(del.dataset.delete), { method: 'DELETE' }); await commands(); notice('Command deleted.'); }
+    catch (x) { notice(x.message, true); }
+  }
+  const ownerRm = e.target.closest('[data-remove-owner]');
+  if (ownerRm && confirm('Remove this Owner? At least one Owner must remain.')) {
+    try { await api('/api/owners/' + encodeURIComponent(ownerRm.dataset.removeOwner), { method: 'DELETE' }); await admins(); notice('Owner removed and saved.'); }
     catch (x) { notice(x.message, true); }
   }
   const rm = e.target.closest('[data-remove-admin]');
@@ -298,6 +308,11 @@ $('#save-command').addEventListener('click', async () => {
     await api('/api/commands/' + encodeURIComponent(file) + '/save', { method: 'POST', body: JSON.stringify({ source: $('#command-source').value }) });
     $('#editor-wrap').hidden = true; await commands(); notice('Command validated and saved.');
   } catch (e) { notice(e.message, true); }
+});
+$('#owner-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { await api('/api/owners', { method: 'POST', body: JSON.stringify({ id: $('#owner-input-id').value.trim() }) }); $('#owner-input-id').value = ''; await admins(); notice('Owner saved.'); }
+  catch (x) { notice(x.message, true); }
 });
 $('#admin-form').addEventListener('submit', async e => {
   e.preventDefault();
