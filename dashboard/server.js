@@ -133,8 +133,9 @@ async function startDashboard({ config, logger, runtime }) {
   app.post('/api/admins', (req, res) => {
     const id = String(req.body?.id || '');
     if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Invalid numeric ID' });
+    if (id === String(config.ownerID || '')) return res.status(400).json({ error: 'Owner cannot be added to the admin list' });
     if (!config.adminIDs.includes(id)) config.adminIDs.push(id);
-    persistConfig(config).then(() => res.json({ admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
+    persistConfig(config).then(() => res.json({ ownerID: config.ownerID || '', admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
   });
   app.delete('/api/admins/:id', (req, res) => {
     const id = String(req.params.id);
