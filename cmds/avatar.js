@@ -109,6 +109,8 @@ function changeAvatar(api, stream) {
 }
 
 module.exports = {
+  // Exported helpers allow deterministic tests without a live Facebook session.
+  _test: { isAllowedFacebookUrl, getRepliedImage, downloadFacebookImage, changeAvatar },
   name: 'avatar',
   aliases: ['تغييرالصورة', 'تغييرالصوره', 'صورةالحساب', 'صورهالحساب'],
   description: 'تغيير صورة حساب فيسبوك إلى الصورة التي تم الرد عليها (للمسؤولين)',
