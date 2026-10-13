@@ -45,9 +45,12 @@ function loadConfig() {
 }
 function validateConfig(c) {
   if (!c || typeof c.prefix !== 'string' || !c.prefix.trim() || c.prefix.length > 12) throw new Error('Invalid prefix');
-  if (!Array.isArray(c.adminIDs) || c.adminIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs');
-  if (c.ownerID && !/^\d{1,30}$/.test(String(c.ownerID))) throw new Error('Invalid owner ID');
-  if (c.ownerID && c.adminIDs.includes(String(c.ownerID))) c.adminIDs = c.adminIDs.filter(id => id !== String(c.ownerID));
+  if (!Array.isArray(c.ownerIDs)) c.ownerIDs = c.ownerID ? [String(c.ownerID)] : [];
+  if (c.ownerIDs.length > 3 || c.ownerIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid owner IDs (maximum 3)');
+  c.ownerIDs = [...new Set(c.ownerIDs)];
+  c.ownerID = c.ownerIDs[0] || '';
+  if (!Array.isArray(c.adminIDs) || c.adminIDs.length > 20 || c.adminIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs (maximum 20)');
+  c.adminIDs = [...new Set(c.adminIDs)].filter(id => !c.ownerIDs.includes(id));
   return true;
 }
 module.exports = { loadConfig, validateConfig };
