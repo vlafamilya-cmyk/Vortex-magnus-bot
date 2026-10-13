@@ -7,6 +7,7 @@ const fs = require('node:fs/promises');
 const { validateAppState } = require('../utils/appState');
 const { atomicWrite } = require('../utils/atomicFile');
 const { validateConfig } = require('../utils/config');
+const roleLists = require('../utils/roleLists');
 
 async function startDashboard({ config, logger, runtime }) {
   if (!config.dashboardPassword || !config.sessionSecret || config.sessionSecret.length < 32) {
@@ -141,43 +142,56 @@ async function startDashboard({ config, logger, runtime }) {
 
   app.get('/api/admins', (req, res) => res.json({ ownerID: config.ownerID || '', owners: config.ownerIDs || (config.ownerID ? [config.ownerID] : []), admins: config.adminIDs }));
   app.post('/api/owners', async (req, res) => {
-    const id = String(req.body?.id || '').trim();
-    if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Enter a valid numeric Owner ID' });
-    const owners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
-    if (owners.includes(id)) return res.status(400).json({ error: 'This Owner ID is already saved' });
-    if (owners.length >= 3) return res.status(400).json({ error: 'Maximum of 3 Owners reached' });
-    const oldOwners = [...owners], oldAdmins = [...config.adminIDs];
-    config.ownerIDs = [...owners, id];
-    config.ownerID = config.ownerIDs[0] || '';
-    config.adminIDs = config.adminIDs.filter(x => x !== id);
-    try { await persistConfig(config); res.json({ owners: config.ownerIDs, ownerID: config.ownerID, admins: config.adminIDs }); }
-    catch { config.ownerIDs = oldOwners; config.ownerID = oldOwners[0] || ''; config.adminIDs = oldAdmins; res.status(500).json({ error: 'Save failed' }); }
+    const oldOwners = [...(config.ownerIDs || (config.ownerID ? [config.ownerID] : []))];
+    const oldOwnerID = config.ownerID;
+    const oldAdmins = [...config.adminIDs];
+    try {
+      config.ownerIDs = roleLists.addOwner(oldOwners, req.body?.id);
+      config.ownerID = config.ownerIDs[0] || '';
+      config.adminIDs = config.adminIDs.filter(id => !config.ownerIDs.includes(id));
+      await persistConfig(config);
+      res.json({ owners: config.ownerIDs, ownerID: config.ownerID, admins: config.adminIDs });
+    } catch (e) {
+      config.ownerIDs = oldOwners; config.ownerID = oldOwnerID; config.adminIDs = oldAdmins;
+      res.status(e.message === 'Save failed' ? 500 : 400).json({ error: e.message === 'Save failed' ? 'Save failed' : e.message });
+    }
   });
   app.delete('/api/owners/:id', async (req, res) => {
-    const id = String(req.params.id);
+    const oldOwners = [...(config.ownerIDs || (config.ownerID ? [config.ownerID] : []))];
+    const oldOwnerID = config.ownerID;
+    try {
+      config.ownerIDs = roleLists.removeOwner(oldOwners, req.params.id);
+      config.ownerID = config.ownerIDs[0] || '';
+      await persistConfig(config);
+      res.json({ owners: config.ownerIDs, ownerID: config.ownerID });
+    } catch (e) {
+      config.ownerIDs = oldOwners; config.ownerID = oldOwnerID;
+      res.status(e.message === 'Save failed' ? 500 : e.message === 'Owner ID not found' ? 404 : 400).json({ error: e.message });
+    }
+  });
+  app.post('/api/admins', async (req, res) => {
+    const oldAdmins = [...config.adminIDs];
     const owners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
-    if (!owners.includes(id)) return res.status(404).json({ error: 'Owner ID not found' });
-    if (owners.length <= 1) return res.status(400).json({ error: 'At least one Owner must remain' });
-    const oldOwners = [...owners], oldOwnerID = config.ownerID;
-    config.ownerIDs = owners.filter(x => x !== id);
-    config.ownerID = config.ownerIDs[0] || '';
-    try { await persistConfig(config); res.json({ owners: config.ownerIDs, ownerID: config.ownerID }); }
-    catch { config.ownerIDs = oldOwners; config.ownerID = oldOwnerID; res.status(500).json({ error: 'Save failed' }); }
+    try {
+      config.adminIDs = roleLists.addAdmin(oldAdmins, owners, req.body?.id);
+      await persistConfig(config);
+      res.json({ ownerID: config.ownerID || '', owners, admins: config.adminIDs });
+    } catch (e) {
+      config.adminIDs = oldAdmins;
+      res.status(e.message === 'Save failed' ? 500 : 400).json({ error: e.message });
+    }
   });
-  app.post('/api/admins', (req, res) => {
-    const id = String(req.body?.id || '');
-    if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Invalid numeric ID' });
-    if ((config.ownerIDs || [config.ownerID]).includes(id)) return res.status(400).json({ error: 'Owners cannot be added to the regular admin list' });
-    if (config.adminIDs.includes(id)) return res.status(400).json({ error: 'This Admin ID is already saved' });
-    if (config.adminIDs.length >= 20) return res.status(400).json({ error: 'Maximum of 20 regular Admins reached' });
-    config.adminIDs.push(id);
-    persistConfig(config).then(() => res.json({ ownerID: config.ownerID || '', owners: config.ownerIDs || [], admins: config.adminIDs })).catch(() => { config.adminIDs = config.adminIDs.filter(x => x !== id); res.status(500).json({ error: 'Save failed' }); });
-  });
-  app.delete('/api/admins/:id', (req, res) => {
-    const id = String(req.params.id);
-    if ((config.ownerIDs || [config.ownerID]).includes(id)) return res.status(400).json({ error: 'Owner IDs are managed separately' });
-    config.adminIDs = config.adminIDs.filter(x => x !== id);
-    persistConfig(config).then(() => res.json({ admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
+  app.delete('/api/admins/:id', async (req, res) => {
+    const oldAdmins = [...config.adminIDs];
+    const owners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
+    try {
+      config.adminIDs = roleLists.removeAdmin(oldAdmins, owners, req.params.id);
+      await persistConfig(config);
+      res.json({ admins: config.adminIDs });
+    } catch (e) {
+      config.adminIDs = oldAdmins;
+      res.status(e.message === 'Save failed' ? 500 : 400).json({ error: e.message });
+    }
   });
   app.get('/api/settings', (req, res) => res.json({ botName: config.botName, prefix: config.prefix, language: config.language, dashboard: config.dashboard }));
   app.put('/api/settings', async (req, res) => {
