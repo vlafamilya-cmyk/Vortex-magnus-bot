@@ -168,10 +168,11 @@ function createBotRuntime({ config, logger }) {
         if (!appState) {
           try { await fs.access(path.join(config.dataDir, '.appstate-cleared')); sessionCleared = true; } catch {}
           if (sessionCleared) throw new Error('No AppState saved. Add a new session in the dashboard.');
-          let raw = config.appStateJson;
-          if (!raw && config.appStateFile) raw = await fs.readFile(config.appStateFile, 'utf8');
-          if (!raw) {
-            try { raw = await fs.readFile(path.join(config.dataDir, 'appstate.json'), 'utf8'); } catch {}
+          let raw = '';
+          try { raw = await fs.readFile(path.join(config.dataDir, 'appstate.json'), 'utf8'); } catch {}
+          if (!raw && config.appStateJson) raw = config.appStateJson;
+          if (!raw && config.appStateFile) {
+            try { raw = await fs.readFile(config.appStateFile, 'utf8'); } catch {}
           }
           if (!raw) throw new Error('No AppState configured');
           appState = validateAppState(raw);
@@ -352,6 +353,8 @@ function createBotRuntime({ config, logger }) {
       await atomicWrite(path.join(config.dataDir, '.appstate-cleared'), new Date().toISOString(), 0o600);
       appState = null;
       appStatePresent = false;
+      config.appStateJson = '';
+      config.appStateFile = '';
       sessionCleared = true;
       requiresSessionUpdate = false;
       sessionHealth = 'no-session';
