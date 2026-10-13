@@ -10,11 +10,11 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 - A valid AppState supplied by the account owner
 
 ## Local setup
-1. Run `npm install` and `npm start`. The default Dashboard password is `vortex110`; change it before exposing the Dashboard publicly. A random `SESSION_SECRET` is generated and saved automatically when it is not supplied.
+1. Run `npm install`.
 2. Set `OWNER_ID` to the owner's numeric Messenger ID and optionally set `ADMIN_IDS` to comma-separated numeric IDs. Never commit `.env` or AppState.
-3. Run `npm start`.
-4. Open `http://localhost:3000/login`.
-3. Submit AppState in the protected Dashboard section. The session is saved in `data/appstate.json`; do not commit this file or share its contents.
+3. Set a strong `DASHBOARD_PASSWORD` before exposing the Dashboard publicly. You may set `ADMIN_DASHBOARD_PASSWORD` for a separate read-only admin login. A random `SESSION_SECRET` is generated and saved automatically when omitted.
+4. Run `npm start`.
+5. Open `http://localhost:3000/login` and submit AppState in the protected Dashboard section. It is saved in `data/appstate.json`; do not commit this file or share its contents.
 
 ## Optional environment variables
 | Variable | Purpose |
@@ -33,7 +33,7 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 Runtime data is stored in the project's `data/` directory. For persistence on Railway, attach a Volume at the app's `/app/data` directory. No environment variable is needed to set file paths.
 
 ## Commands
-Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(api, event)` and optionally `adminOnly`. Prefix examples: `*ping`, `*help`, `*info`, `*uptime`, `*uid`, `*admin`, `*kick`, `*prefix`, `*reload`. The `uptime` command (aliases: `up`, `مدة`, `مدة_التشغيل`) shows how long the current bot process has been running. Command output uses paced sending, suppresses repeated outgoing content within a short window, caps outbound sends, and pauses briefly after platform/rate-limit errors instead of retrying aggressively. Duplicate delivery of the same incoming command message ID is ignored. These safeguards reduce accidental spam but cannot guarantee that Messenger will not restrict or block an account, and they do not bypass platform limits. The bot also attempts to enforce the group nickname `𝑽𝑶𝑹𝑻𝑬𝑿 →` when it sees group activity or nickname-change/join events; this requires the installed FCA client to support `getThreadInfo` and `changeNickname`, and it cannot guarantee enforcement if Messenger or the client rejects the request.
+Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(api, event)` and optionally `adminOnly`. Prefix examples: `*ping`, `*help`, `*info`, `*uptime`, `*uid`, `*admin`, `*kick`, `*prefix`, `*reload`. `*admin` lets admins view the list; only the owner can add or remove IDs, and those changes are persisted. The `uptime` command (aliases: `up`, `مدة`, `مدة_التشغيل`) shows how long the current bot process has been running. Command output uses paced sending, suppresses repeated outgoing content within a short window, caps outbound sends, and pauses briefly after platform/rate-limit errors instead of retrying aggressively. Duplicate delivery of the same incoming command message ID is ignored. These safeguards reduce accidental spam but cannot guarantee that Messenger will not restrict or block an account, and they do not bypass platform limits. The bot also attempts to enforce the group nickname `𝑽𝑶𝑹𝑻𝑬𝑿 →` when it sees group activity or nickname-change/join events; this requires the installed FCA client to support `getThreadInfo` and `changeNickname`, and it cannot guarantee enforcement if Messenger or the client rejects the request.
 
 `kick` is intentionally capability-checked: it only calls `removeUserFromGroup` if the installed client exposes it. It does not pretend success if the method is absent. The exact `@dongdev/fca-unofficial` callback/client surface may vary by release; verify against the installed package before relying on real sessions.
 
