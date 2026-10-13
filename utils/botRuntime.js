@@ -167,7 +167,7 @@ function createBotRuntime({ config, logger }) {
       if (!event || event.type !== 'message' || !event.body || !event.threadID) return;
       const body = String(event.body);
       if (!body.startsWith(config.prefix)) return;
-      const [rawName, ...args] = body.slice(config.prefix.length).trim().split(/\\s+/);
+      const [rawName, ...args] = body.slice(config.prefix.length).trim().split(/\s+/);
       if (!rawName) return;
       const cmd = loaded.commands.get(rawName.toLowerCase());
       if (!cmd) return;
@@ -224,7 +224,7 @@ function createBotRuntime({ config, logger }) {
     },
     get api() { return api; },
     async editCommand(name, source) {
-      if (!/^[a-z0-9_-]{1,32}\\.js$/i.test(name)) throw new Error('Invalid command filename');
+      if (!/^[a-z0-9_-]{1,32}\.js$/i.test(name)) throw new Error('Invalid command filename');
       const vm = require('node:vm');
       new vm.Script(source, { filename: name });
       const target = path.resolve(cmdsDir, name);
@@ -240,7 +240,7 @@ function createBotRuntime({ config, logger }) {
       return result;
     },
     async deleteCommand(name) {
-      if (!/^[a-z0-9_-]{1,32}\\.js$/i.test(name)) throw new Error('Invalid command filename');
+      if (!/^[a-z0-9_-]{1,32}\.js$/i.test(name)) throw new Error('Invalid command filename');
       const target = path.resolve(cmdsDir, name);
       if (path.dirname(target) !== path.resolve(cmdsDir)) throw new Error('Invalid path');
       await fs.unlink(target);
