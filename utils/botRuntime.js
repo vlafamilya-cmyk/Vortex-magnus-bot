@@ -314,10 +314,10 @@ function createBotRuntime({ config, logger }) {
       if (!event || !['message', 'message_reply', 'messageCreate'].includes(event.type) || !event.body || !event.threadID) return;
       const body = String(event.body).trim();
       // Stateful commands may consume plain numeric/confirmation replies without the command prefix.
-      const sender = String(event.senderID || '');
-      const isOwner = (config.ownerIDs || [config.ownerID]).filter(Boolean).includes(sender);
-      const isAdmin = isOwner || config.adminIDs.includes(sender);
-      const replyContext = { ...event, args: [], commandName: '', startedAt: Date.now(), config, runtime, isOwner, isAdmin };
+      const replySender = String(event.senderID || '');
+      const replyIsOwner = (config.ownerIDs || [config.ownerID]).filter(Boolean).includes(replySender);
+      const replyIsAdmin = replyIsOwner || config.adminIDs.includes(replySender);
+      const replyContext = { ...event, args: [], commandName: '', startedAt: Date.now(), config, runtime, isOwner: replyIsOwner, isAdmin: replyIsAdmin };
       for (const command of loaded.unique) {
         if (typeof command.handleReply !== 'function') continue;
         try {
