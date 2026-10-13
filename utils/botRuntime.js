@@ -372,7 +372,15 @@ function createBotRuntime({ config, logger }) {
       await runtime.disconnect();
     },
     async start() {
-      await initializeAppStateRefreshManager();
+      try {
+        await fs.access(path.join(config.dataDir, '.appstate-cleared'));
+        sessionCleared = true;
+        appStatePresent = false;
+        sessionHealth = 'no-session';
+        sessionMessage = 'Session removed. Paste a new AppState to connect again.';
+      } catch {
+        await initializeAppStateRefreshManager();
+      }
       reconnectManager = new ReconnectManager({
         connect: () => runtime.connect(), logger,
         baseMs: config.connection?.baseBackoffMs || 2000,
@@ -380,7 +388,7 @@ function createBotRuntime({ config, logger }) {
       });
       reconnectManager.start();
       manualDisconnect = false;
-      try { await runtime.connect(); } catch { reconnectManager.schedule(); }
+      try { await runtime.connect(); } catch { if (!sessionCleared) reconnectManager.schedule(); }
     },
     get api() { return api; },
     async editCommand(name, source) {
