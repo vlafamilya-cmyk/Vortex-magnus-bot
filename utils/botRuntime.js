@@ -358,7 +358,11 @@ function createBotRuntime({ config, logger }) {
       sessionMessage = 'Session removed. Paste a new AppState to connect again.';
       lastError = null;
       lastConnect = null;
+      lastDisconnect = null;
+      mqttStatus = 'offline';
       reconnects = 0;
+      startedAt = Date.now();
+      seenCommandMessages.clear();
       clearRepeatingMessages();
       logger.warn('APPSTATE_SESSION_REMOVED', { localSessionDataRemoved: true });
       return { status: 'offline', appStateConfigured: false, sessionCleared: true };
