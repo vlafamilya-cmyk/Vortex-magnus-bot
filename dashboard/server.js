@@ -119,6 +119,16 @@ async function startDashboard({ config, logger, runtime }) {
     }
   });
 
+  app.delete('/api/appstate/session', async (req, res) => {
+    try {
+      const result = await runtime.clearAppStateSession();
+      res.json({ success: true, ...result });
+    } catch (e) {
+      logger.error('APPSTATE_SESSION_REMOVE_FAILED', { error: String(e.message || e).slice(0, 180) });
+      res.status(500).json({ success: false, error: 'Could not remove the saved session completely. Check the server logs.' });
+    }
+  });
+
   app.post('/api/connection/connect', async (req, res) => {
     try { res.json(await runtime.connect()); }
     catch (e) { res.status(503).json({ error: e.message }); }
