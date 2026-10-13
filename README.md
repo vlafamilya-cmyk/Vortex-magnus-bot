@@ -22,7 +22,8 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 | `DASHBOARD_PASSWORD` | Overrides the default Dashboard password `vortex110` |
 | `SESSION_SECRET` | Optional session-signing secret; generated and stored locally when omitted |
 | `APPSTATE_JSON` | Optional AppState JSON array; the Dashboard is recommended |
-| `OWNER_ID` | Initial numeric Messenger Owner ID; overridden by saved Owner list when present |\n| `OWNER_IDS` | Optional comma-separated initial Owner IDs (maximum 3) |
+| `OWNER_ID` | Initial numeric Messenger Owner ID; overridden by saved Owner list when present |
+| `OWNER_IDS` | Optional comma-separated initial Owner IDs (maximum 3) |
 | `ADMIN_IDS` | Comma-separated numeric Messenger IDs for ordinary admins |
 | `ADMIN_DASHBOARD_PASSWORD` | Optional separate password for read-only dashboard admin access; `DASHBOARD_PASSWORD` is the owner login |
 | `BOT_NAME` | Display name; defaults to VORTEX |
