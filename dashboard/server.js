@@ -139,17 +139,43 @@ async function startDashboard({ config, logger, runtime }) {
   });
   app.post('/api/connection/disconnect', async (req, res) => res.json(await runtime.disconnect()));
 
-  app.get('/api/admins', (req, res) => res.json({ ownerID: config.ownerID || '', admins: config.adminIDs }));
+  app.get('/api/admins', (req, res) => res.json({ ownerID: config.ownerID || '', owners: config.ownerIDs || (config.ownerID ? [config.ownerID] : []), admins: config.adminIDs }));
+  app.post('/api/owners', async (req, res) => {
+    const id = String(req.body?.id || '').trim();
+    if (!/^\\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Enter a valid numeric Owner ID' });
+    const owners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
+    if (owners.includes(id)) return res.status(400).json({ error: 'This Owner ID is already saved' });
+    if (owners.length >= 3) return res.status(400).json({ error: 'Maximum of 3 Owners reached' });
+    const oldOwners = [...owners], oldAdmins = [...config.adminIDs];
+    config.ownerIDs = [...owners, id];
+    config.ownerID = config.ownerIDs[0] || '';
+    config.adminIDs = config.adminIDs.filter(x => x !== id);
+    try { await persistConfig(config); res.json({ owners: config.ownerIDs, ownerID: config.ownerID, admins: config.adminIDs }); }
+    catch { config.ownerIDs = oldOwners; config.ownerID = oldOwners[0] || ''; config.adminIDs = oldAdmins; res.status(500).json({ error: 'Save failed' }); }
+  });
+  app.delete('/api/owners/:id', async (req, res) => {
+    const id = String(req.params.id);
+    const owners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
+    if (!owners.includes(id)) return res.status(404).json({ error: 'Owner ID not found' });
+    if (owners.length <= 1) return res.status(400).json({ error: 'At least one Owner must remain' });
+    const oldOwners = [...owners], oldOwnerID = config.ownerID;
+    config.ownerIDs = owners.filter(x => x !== id);
+    config.ownerID = config.ownerIDs[0] || '';
+    try { await persistConfig(config); res.json({ owners: config.ownerIDs, ownerID: config.ownerID }); }
+    catch { config.ownerIDs = oldOwners; config.ownerID = oldOwnerID; res.status(500).json({ error: 'Save failed' }); }
+  });
   app.post('/api/admins', (req, res) => {
     const id = String(req.body?.id || '');
     if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Invalid numeric ID' });
-    if (id === String(config.ownerID || '')) return res.status(400).json({ error: 'Owner cannot be added to the admin list' });
-    if (!config.adminIDs.includes(id)) config.adminIDs.push(id);
-    persistConfig(config).then(() => res.json({ ownerID: config.ownerID || '', admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
+    if ((config.ownerIDs || [config.ownerID]).includes(id)) return res.status(400).json({ error: 'Owners cannot be added to the regular admin list' });
+    if (config.adminIDs.includes(id)) return res.status(400).json({ error: 'This Admin ID is already saved' });
+    if (config.adminIDs.length >= 20) return res.status(400).json({ error: 'Maximum of 20 regular Admins reached' });
+    config.adminIDs.push(id);
+    persistConfig(config).then(() => res.json({ ownerID: config.ownerID || '', owners: config.ownerIDs || [], admins: config.adminIDs })).catch(() => { config.adminIDs = config.adminIDs.filter(x => x !== id); res.status(500).json({ error: 'Save failed' }); });
   });
   app.delete('/api/admins/:id', (req, res) => {
     const id = String(req.params.id);
-    if (id === String(config.ownerID || '')) return res.status(400).json({ error: 'Owner cannot be removed from the admin list' });
+    if ((config.ownerIDs || [config.ownerID]).includes(id)) return res.status(400).json({ error: 'Owner IDs are managed separately' });
     config.adminIDs = config.adminIDs.filter(x => x !== id);
     persistConfig(config).then(() => res.json({ admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
   });
@@ -208,7 +234,7 @@ async function startDashboard({ config, logger, runtime }) {
 
   async function persistConfig(c) {
     const file = path.join(c.dataDir, 'settings.json');
-    await atomicWrite(file, JSON.stringify({ botName: c.botName, prefix: c.prefix, language: c.language, adminIDs: c.adminIDs }, null, 2), 0o600);
+    await atomicWrite(file, JSON.stringify({ botName: c.botName, prefix: c.prefix, language: c.language, ownerIDs: c.ownerIDs || (c.ownerID ? [c.ownerID] : []), adminIDs: c.adminIDs }, null, 2), 0o600);
   }
 }
 module.exports = { startDashboard };
