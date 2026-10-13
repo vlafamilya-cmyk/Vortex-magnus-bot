@@ -25,6 +25,21 @@ function createBotRuntime({ config, logger }) {
   let appStateRefreshManager;
   let mqttStatus = 'offline';
   let manualDisconnect = false;
+  let requiresSessionUpdate = false;
+  let sessionHealth = 'unknown';
+  let sessionMessage = 'Session status has not been verified yet.';
+  function isSessionAuthError(value) {
+    const message = String(value?.message || value || '').toLowerCase();
+    return /checkpoint|login approval|login required|invalid appstate|invalid cookie|cookie.{0,20}(expired|invalid)|session.{0,20}(expired|invalid)|not logged in|authentication failed|account disabled|two.factor|\b401\b|\b403\b|please log in/.test(message);
+  }
+  function setSessionAttention(reason) {
+    requiresSessionUpdate = true;
+    sessionHealth = 'needs-attention';
+    sessionMessage = 'Facebook may have expired this session or requires account verification. Update AppState in the dashboard, then connect again.';
+    lastError = sessionMessage;
+    reconnectManager?.stop();
+    logger.warn('SESSION_REAUTH_REQUIRED', { reason: 'authentication-or-checkpoint-error' });
+  }
   const nicknameGuard = new NicknameGuard({ getApi: () => api, logger, nickname: '𝑽𝑶𝑹𝑻𝑬𝑿 →' });
   const humanWriter = createHumanWriter({ logger, minIntervalMs: 1200, globalIntervalMs: 900, duplicateWindowMs: 8000, maxPerMinute: 20 });
   const seenCommandMessages = new Map();
@@ -72,6 +87,7 @@ function createBotRuntime({ config, logger }) {
       return {
         bot: config.botName, prefix: config.prefix, status, fcaStatus: status, mqttStatus,
         connected: status === 'connected', uptimeMs: Date.now() - startedAt,
+        sessionHealth, sessionMessage, requiresSessionUpdate,
         commands: loaded.unique.length, reconnectAttempts: reconnects,
         lastConnection: lastConnect, lastDisconnect, lastError,
         appStateConfigured: appStatePresent,
@@ -114,11 +130,17 @@ function createBotRuntime({ config, logger }) {
       await atomicWrite(file, JSON.stringify(parsed), 0o600);
       appState = parsed;
       appStatePresent = true;
+      requiresSessionUpdate = false;
+      sessionHealth = 'checking';
+      sessionMessage = 'New AppState saved. Checking the session connection.';
+      lastError = null;
+      reconnectManager?.start();
       if (connect) await runtime.connect();
       return { valid: true, connected: status === 'connected' };
     },
     async connect() {
       if (connecting || status === 'connected') return { status, mqttStatus };
+      if (requiresSessionUpdate) return { status: 'needs-attention', mqttStatus, sessionHealth, sessionMessage };
       if (reconnectManager && manualDisconnect) {
         reconnectManager.start();
         manualDisconnect = false;
@@ -159,8 +181,8 @@ function createBotRuntime({ config, logger }) {
                 client.setOptions?.({ listenEvents: true, autoReconnect: false, logLevel: 'error' });
                 const listener = client.listenMqtt((e, event) => {
                   if (e) {
-                    logger.warn('FCA_EVENT_ERROR', { error: String(e.message || e).slice(0, 200) });
-                    if (api === client) runtime.disconnected('mqtt-event-error');
+                    logger.warn('FCA_EVENT_ERROR', { error: isSessionAuthError(e) ? 'authentication-or-checkpoint-error' : String(e.message || e).slice(0, 200) });
+                    if (api === client) runtime.disconnected(e.message || 'mqtt-event-error');
                     return;
                   }
                   if (event) {
@@ -171,7 +193,8 @@ function createBotRuntime({ config, logger }) {
                 if (listener?.on) {
                   listener.on('error', e => {
                     mqttStatus = 'error';
-                    logger.warn('MQTT_ERROR', { error: String(e.message || e).slice(0, 200) });
+                    logger.warn('MQTT_ERROR', { error: isSessionAuthError(e) ? 'authentication-or-checkpoint-error' : String(e.message || e).slice(0, 200) });
+                    if (api === client) runtime.disconnected(e.message || 'mqtt-listener-error');
                   });
                   listener.on('close', () => {
                     mqttStatus = 'offline';
@@ -185,6 +208,9 @@ function createBotRuntime({ config, logger }) {
                 mqttStatus = 'connected';
               } catch (e) { return finish(e); }
               status = 'connected';
+              sessionHealth = 'healthy';
+              sessionMessage = 'The FCA session is connected. Facebook presence may still be controlled by Facebook.';
+              requiresSessionUpdate = false;
               lastConnect = new Date().toISOString();
               lastError = null;
               finish(null, client);
@@ -194,11 +220,18 @@ function createBotRuntime({ config, logger }) {
         reconnectManager?.reset();
         return { status };
       } catch (e) {
-        status = 'offline';
         mqttStatus = 'offline';
-        lastError = String(e.message || e).slice(0, 300);
+        if (isSessionAuthError(e)) {
+          setSessionAttention(e);
+          status = 'needs-attention';
+        } else {
+          status = 'offline';
+          sessionHealth = 'disconnected';
+          sessionMessage = 'The connection failed. The bot will retry with a delay; check logs if it continues.';
+          lastError = String(e.message || e).slice(0, 300);
+        }
         lastDisconnect = new Date().toISOString();
-        logger.error('FCA_CONNECT_FAILED', { error: lastError });
+        logger.error('FCA_CONNECT_FAILED', { error: requiresSessionUpdate ? 'authentication-or-checkpoint-error' : lastError });
         throw e;
       } finally {
         connecting = false;
@@ -208,13 +241,20 @@ function createBotRuntime({ config, logger }) {
       clearRepeatingMessages();
       if (status === 'offline' && !api) return;
       lastDisconnect = new Date().toISOString();
-      status = 'offline';
       mqttStatus = 'offline';
       api = null;
-      lastError = String(reason || 'connection lost').slice(0, 200);
-      logger.warn('FCA_DISCONNECTED', { reason: lastError });
+      if (isSessionAuthError(reason)) {
+        setSessionAttention(reason);
+        status = 'needs-attention';
+      } else {
+        status = 'offline';
+        sessionHealth = 'disconnected';
+        sessionMessage = 'The connection was lost. Automatic reconnection will retry with increasing delays.';
+        lastError = String(reason || 'connection lost').slice(0, 200);
+      }
+      logger.warn('FCA_DISCONNECTED', { reason: requiresSessionUpdate ? 'authentication-or-checkpoint-error' : lastError });
       reconnects++;
-      if (!manualDisconnect) reconnectManager?.schedule();
+      if (!manualDisconnect && !requiresSessionUpdate) reconnectManager?.schedule();
     },
     async handleEvent(event) {
       nicknameGuard.handle(event).catch(e => logger.warn('NICKNAME_GUARD_FAILED', { error: String(e.message || e).slice(0, 200) }));
