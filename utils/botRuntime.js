@@ -220,14 +220,9 @@ function createBotRuntime({ config, logger }) {
       nicknameGuard.handle(event).catch(e => logger.warn('NICKNAME_GUARD_FAILED', { error: String(e.message || e).slice(0, 200) }));
       if (!event || event.type !== 'message' || !event.body || !event.threadID) return;
       const body = String(event.body).trim();
-      let commandText;
-      if (body.startsWith(config.prefix)) {
-        commandText = body.slice(config.prefix.length).trim();
-      } else if (/^(?:فورتكس|vortex)\s+/iu.test(body)) {
-        commandText = body.replace(/^(?:فورتكس|vortex)\s+/iu, '').trim();
-      } else {
-        return;
-      }
+      // All commands, including repeating-message controls, must use the dashboard-configured prefix.
+      if (!body.startsWith(config.prefix)) return;
+      const commandText = body.slice(config.prefix.length).trim();
       const [rawName, ...args] = commandText.split(/\s+/);
       if (!rawName) return;
       const cmd = loaded.commands.get(rawName.toLowerCase());
