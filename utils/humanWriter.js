@@ -52,6 +52,11 @@ function createHumanWriter({ logger = console, ...options } = {}) {
               if (wait) await new Promise(resolve => setTimeout(resolve, wait));
               const started = Date.now();
               prune(started);
+              if (Date.now() < pausedUntil) {
+                recentMessages.delete(key);
+                logger.warn?.('OUTBOUND_PAUSED', { threadID, until: new Date(pausedUntil).toISOString() });
+                return { suppressed: true, reason: 'temporary-pause' };
+              }
               if (sentAt.length >= config.maxPerMinute) {
                 recentMessages.delete(key);
                 logger.warn?.('OUTBOUND_RATE_LIMITED', { threadID, window: '60s' });
