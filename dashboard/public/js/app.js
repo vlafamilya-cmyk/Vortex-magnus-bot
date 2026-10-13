@@ -238,6 +238,27 @@ $('#validate-appstate').addEventListener('click', async () => {
 });
 $('#save-appstate').addEventListener('click', () => saveAppState(false));
 $('#connect-appstate').addEventListener('click', () => saveAppState(true));
+$('#remove-appstate-session').addEventListener('click', async () => {
+  const confirmed = confirm(
+    'Remove the saved AppState session? The bot will disconnect and delete its locally saved session and refresh statistics. Commands, dashboard settings, and admin lists will remain.'
+  );
+  if (!confirmed) return;
+  const button = $('#remove-appstate-session');
+  button.disabled = true;
+  button.textContent = 'Removing…';
+  try {
+    await api('/api/appstate/session', { method: 'DELETE' });
+    $('#appstate-input').value = '';
+    $('#appstate-result').textContent = 'Session removed. Paste a new AppState to connect again.';
+    notice('Session removed. The bot is offline until a new AppState is saved.');
+    await status();
+  } catch (e) {
+    notice(e.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Remove session';
+  }
+});
 async function saveAppState(connect) {
   try {
     const appState = JSON.parse($('#appstate-input').value);
