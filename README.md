@@ -31,7 +31,7 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 Runtime data is stored in the project's `data/` directory. For persistence on Railway, attach a Volume at the app's `/app/data` directory. No environment variable is needed to set file paths.
 
 ## Commands
-Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(api, event)` and optionally `adminOnly`. Prefix examples: `⚜︎ping`, `⚜︎help`, `⚜︎info`, `⚜︎uid`, `⚜︎admin`, `⚜︎kick`, `⚜︎prefix`, `⚜︎reload`.
+Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(api, event)` and optionally `adminOnly`. Prefix examples: `*ping`, `*help`, `*info`, `*uptime`, `*uid`, `*admin`, `*kick`, `*prefix`, `*reload`. The `uptime` command (aliases: `up`, `مدة`, `مدة_التشغيل`) shows how long the current bot process has been running. The bot also attempts to enforce the group nickname `𝑽𝑶𝑹𝑻𝑬𝑿 →` when it sees group activity or nickname-change/join events; this requires the installed FCA client to support `getThreadInfo` and `changeNickname`, and it cannot guarantee enforcement if Messenger or the client rejects the request.
 
 `kick` is intentionally capability-checked: it only calls `removeUserFromGroup` if the installed client exposes it. It does not pretend success if the method is absent. The exact `@dongdev/fca-unofficial` callback/client surface may vary by release; verify against the installed package before relying on real sessions.
 
