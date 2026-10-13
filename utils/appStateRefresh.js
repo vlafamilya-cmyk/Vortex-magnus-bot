@@ -17,6 +17,7 @@ class AppStateRefreshManager {
     this.intervalMs = intervalMs;
     this.timer = null;
     this.inFlight = null;
+    this.stopped = false;
     this.stats = {
       successCount: 0,
       failureCount: 0,
@@ -30,6 +31,7 @@ class AppStateRefreshManager {
   }
 
   async init() {
+    this.stopped = false;
     try {
       const saved = JSON.parse(await fs.readFile(this.file, 'utf8'));
       this.stats = { ...this.stats, ...saved, refreshing: false };
@@ -49,6 +51,7 @@ class AppStateRefreshManager {
   }
 
   schedule() {
+    if (this.stopped) return;
     if (this.timer) clearTimeout(this.timer);
     const delay = Math.max(0, Date.parse(this.stats.nextRefreshAt) - Date.now());
     this.timer = setTimeout(() => {
@@ -104,13 +107,21 @@ class AppStateRefreshManager {
       await this.persistStats().catch(error => {
         this.logger.warn('APPSTATE_REFRESH_STATS_SAVE_FAILED', { error: String(error.message || error).slice(0, 160) });
       });
-      this.schedule();
+      if (!this.stopped) this.schedule();
     }
   }
 
   stop() {
+    this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  async stopAndWait() {
+    this.stop();
+    if (this.inFlight) {
+      try { await this.inFlight; } catch {}
+    }
   }
 }
 
