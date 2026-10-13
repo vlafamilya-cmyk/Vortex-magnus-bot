@@ -29,7 +29,11 @@ async function startDashboard({ config, logger, runtime }) {
   }));
 
   const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false });
-  const requireAuth = (req, res, next) => req.session?.authenticated ? next() : res.status(401).json({ error: 'Authentication required' });
+  const requireAuth = (req, res, next) => {
+    if (!req.session?.authenticated) return res.status(401).json({ error: 'Authentication required' });
+    if (!['owner', 'admin'].includes(req.session.role)) req.session.role = 'admin';
+    next();
+  };
   const csrf = (req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     const origin = req.get('origin');
@@ -41,21 +45,36 @@ async function startDashboard({ config, logger, runtime }) {
   app.get('/health', (req, res) => res.json({ status: 'ok', bot: 'VORTEX' }));
   app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
   app.post('/api/login', loginLimiter, (req, res) => {
-    if (typeof req.body?.password !== 'string' || req.body.password !== config.dashboardPassword) {
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const role = password && password === config.dashboardPassword ? 'owner' :
+      (config.adminDashboardPassword && password === config.adminDashboardPassword ? 'admin' : '');
+    if (!role) {
       logger.warn('DASHBOARD_LOGIN_FAILED');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     req.session.regenerate(err => {
       if (err) return res.status(500).json({ error: 'Login failed' });
       req.session.authenticated = true;
+      req.session.role = role;
       req.session.csrfToken = require('node:crypto').randomBytes(24).toString('hex');
-      res.json({ ok: true, csrfToken: req.session.csrfToken });
+      res.json({ ok: true, role, csrfToken: req.session.csrfToken });
     });
   });
   app.post('/api/logout', requireAuth, csrf, (req, res) => req.session.destroy(() => res.json({ ok: true })));
-  app.get('/api/session', requireAuth, (req, res) => res.json({ authenticated: true, csrfToken: req.session.csrfToken }));
+  app.get('/api/session', requireAuth, (req, res) => res.json({ authenticated: true, role: req.session.role, ownerID: config.ownerID || '', csrfToken: req.session.csrfToken }));
 
   app.use('/api', requireAuth, csrf);
+  app.use('/api', (req, res, next) => {
+    if (req.session.role === 'owner') return next();
+    const pathOnly = req.originalUrl.split('?')[0];
+    if (pathOnly === '/api/logout') return next();
+    const readOnly = req.method === 'GET' && (
+      ['/api/status', '/api/commands'].includes(pathOnly) ||
+      pathOnly === '/api/events' || pathOnly === '/api/logs'
+    );
+    if (readOnly) return next();
+    return res.status(403).json({ error: 'Owner access required' });
+  });
   app.get('/api/status', (req, res) => res.json(runtime.getState()));
   app.get('/api/commands', (req, res) => res.json({ commands: runtime.getCommands() }));
   app.get('/api/commands/:name/source', (req, res) => {
@@ -110,15 +129,17 @@ async function startDashboard({ config, logger, runtime }) {
   });
   app.post('/api/connection/disconnect', async (req, res) => res.json(await runtime.disconnect()));
 
-  app.get('/api/admins', (req, res) => res.json({ admins: config.adminIDs }));
+  app.get('/api/admins', (req, res) => res.json({ ownerID: config.ownerID || '', admins: config.adminIDs }));
   app.post('/api/admins', (req, res) => {
     const id = String(req.body?.id || '');
     if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Invalid numeric ID' });
+    if (id === String(config.ownerID || '')) return res.status(400).json({ error: 'Owner cannot be added to the admin list' });
     if (!config.adminIDs.includes(id)) config.adminIDs.push(id);
-    persistConfig(config).then(() => res.json({ admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
+    persistConfig(config).then(() => res.json({ ownerID: config.ownerID || '', admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
   });
   app.delete('/api/admins/:id', (req, res) => {
     const id = String(req.params.id);
+    if (id === String(config.ownerID || '')) return res.status(400).json({ error: 'Owner cannot be removed from the admin list' });
     config.adminIDs = config.adminIDs.filter(x => x !== id);
     persistConfig(config).then(() => res.json({ admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
   });

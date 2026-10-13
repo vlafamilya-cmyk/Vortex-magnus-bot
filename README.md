@@ -10,11 +10,11 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 - A valid AppState supplied by the account owner
 
 ## Local setup
-1. Run `npm install` and `npm start`. The default Dashboard password is `vortex110`; change it before exposing the Dashboard publicly. A random `SESSION_SECRET` is generated and saved automatically when it is not supplied.
-2. Set optional `ADMIN_IDS` to comma-separated numeric IDs. Never commit `.env` or AppState.
-3. Run `npm install` and `npm start`.
-2. Open `http://localhost:3000/login`.
-3. Submit AppState in the protected Dashboard section. The session is saved in `data/appstate.json`; do not commit this file or share its contents.
+1. Run `npm install`.
+2. Set `OWNER_ID` to the owner's numeric Messenger ID and optionally set `ADMIN_IDS` to comma-separated numeric IDs. Never commit `.env` or AppState.
+3. Set a strong `DASHBOARD_PASSWORD` before exposing the Dashboard publicly. You may set `ADMIN_DASHBOARD_PASSWORD` for a separate read-only admin login. A random `SESSION_SECRET` is generated and saved automatically when omitted.
+4. Run `npm start`.
+5. Open `http://localhost:3000/login` and submit AppState in the protected Dashboard section. It is saved in `data/appstate.json`; do not commit this file or share its contents.
 
 ## Optional environment variables
 | Variable | Purpose |
@@ -22,7 +22,9 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 | `DASHBOARD_PASSWORD` | Overrides the default Dashboard password `vortex110` |
 | `SESSION_SECRET` | Optional session-signing secret; generated and stored locally when omitted |
 | `APPSTATE_JSON` | Optional AppState JSON array; the Dashboard is recommended |
-| `ADMIN_IDS` | Comma-separated numeric Messenger IDs |
+| `OWNER_ID` | Numeric Messenger ID with owner privileges for bot commands |
+| `ADMIN_IDS` | Comma-separated numeric Messenger IDs for ordinary admins |
+| `ADMIN_DASHBOARD_PASSWORD` | Optional separate password for read-only dashboard admin access; `DASHBOARD_PASSWORD` is the owner login |
 | `BOT_NAME` | Display name; defaults to VORTEX |
 | `PREFIX` | Command prefix; defaults to `*` |
 | `PORT` | Web port; Railway injects this |
@@ -31,7 +33,7 @@ A Node.js Messenger bot scaffold with a protected Express dashboard, command mod
 Runtime data is stored in the project's `data/` directory. For persistence on Railway, attach a Volume at the app's `/app/data` directory. No environment variable is needed to set file paths.
 
 ## Commands
-Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(api, event)` and optionally `adminOnly`. Prefix examples: `*ping`, `*help`, `*info`, `*uptime`, `*uid`, `*admin`, `*kick`, `*prefix`, `*reload`. The `uptime` command (aliases: `up`, `مدة`, `مدة_التشغيل`) shows how long the current bot process has been running. The bot also attempts to enforce the group nickname `𝑽𝑶𝑹𝑻𝑬𝑿 →` when it sees group activity or nickname-change/join events; this requires the installed FCA client to support `getThreadInfo` and `changeNickname`, and it cannot guarantee enforcement if Messenger or the client rejects the request.
+Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(api, event)` and optionally `adminOnly`. Prefix examples: `*ping`, `*help`, `*info`, `*uptime`, `*uid`, `*admin`, `*kick`, `*prefix`, `*reload`. `*admin` lets admins view the list; only the owner can add or remove IDs, and those changes are persisted. The `uptime` command (aliases: `up`, `مدة`, `مدة_التشغيل`) shows how long the current bot process has been running. Command output uses paced sending, suppresses repeated outgoing content within a short window, caps outbound sends, and pauses briefly after platform/rate-limit errors instead of retrying aggressively. Duplicate delivery of the same incoming command message ID is ignored. These safeguards reduce accidental spam but cannot guarantee that Messenger will not restrict or block an account, and they do not bypass platform limits. The bot also attempts to enforce the group nickname `𝑽𝑶𝑹𝑻𝑬𝑿 →` when it sees group activity or nickname-change/join events; this requires the installed FCA client to support `getThreadInfo` and `changeNickname`, and it cannot guarantee enforcement if Messenger or the client rejects the request.
 
 `kick` is intentionally capability-checked: it only calls `removeUserFromGroup` if the installed client exposes it. It does not pretend success if the method is absent. The exact `@dongdev/fca-unofficial` callback/client surface may vary by release; verify against the installed package before relying on real sessions.
 
@@ -43,7 +45,7 @@ Commands live in `cmds/` and export `name`, `aliases`, `description`, `execute(a
 5. Use Railway's HTTPS domain; `NODE_ENV=production` enables secure session cookies.
 
 ## Security notes
-- Dashboard login is session-based, with HttpOnly/SameSite cookies, login rate limiting, and CSRF token checks on mutating API calls.
+- Dashboard login is session-based, with HttpOnly/SameSite cookies, login rate limiting, and CSRF token checks on mutating API calls. The `DASHBOARD_PASSWORD` login is the owner role with full controls. If `ADMIN_DASHBOARD_PASSWORD` is configured, that separate login is read-only and cannot edit commands, credentials, settings, connections, or administrator membership.
 - AppState is validated before storage and never returned by an API or written to logs. Local data should be kept on a private volume with restricted permissions.
 - Dashboard command editing runs JavaScript with the bot process's privileges. Only use it with trusted administrators.
 - Express's default in-memory session store is suitable for a single-process starter, not a multi-instance production deployment. Use a persistent external session store for horizontal scaling.

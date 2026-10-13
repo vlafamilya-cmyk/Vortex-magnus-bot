@@ -1,4 +1,6 @@
 let csrfToken = '';
+let currentRole = 'admin';
+let ownerID = '';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 async function api(url, opts = {}) {
@@ -23,6 +25,7 @@ function duration(ms) {
   return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
 }
 function ensureAppStateRefreshPanel() {
+  if (currentRole !== 'owner') return;
   const section = $('#appstate');
   if (!section || $('#appstate-refresh-panel')) return;
   const heading = section.querySelector('.section-heading');
@@ -60,7 +63,7 @@ function ensureAppStateRefreshPanel() {
 }
 let appStateRefreshSnapshot = null;
 function updateAppStateRefresh(s) {
-  if (!s) return;
+  if (currentRole !== 'owner' || !s) return;
   appStateRefreshSnapshot = s;
   ensureAppStateRefreshPanel();
   $('#appstate-refresh-success').textContent = String(s.successCount || 0);
@@ -102,11 +105,18 @@ async function status() {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function commands() {
   const d = await api('/api/commands');
-  $('#commands-table').innerHTML = d.commands.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.aliases.join(', '))}</td><td>${esc(c.description)}</td><td>${c.adminOnly ? 'Yes' : 'No'}</td><td>${esc(c.file)}</td><td><button class="mini" data-edit="${esc(c.name)}">Edit</button> <button class="mini danger-text" data-delete="${esc(c.file)}">Delete</button></td></tr>`).join('');
+  $('#commands-table').innerHTML = d.commands.map(c => {
+    const actions = currentRole === 'owner'
+      ? '<button class="mini" data-edit="' + esc(c.name) + '">Edit</button> <button class="mini danger-text" data-delete="' + esc(c.file) + '">Delete</button>'
+      : 'Read only';
+    return '<tr><td>' + esc(c.name) + '</td><td>' + esc(c.aliases.join(', ')) + '</td><td>' + esc(c.description) + '</td><td>' + (c.adminOnly ? 'Yes' : 'No') + '</td><td>' + esc(c.file) + '</td><td>' + actions + '</td></tr>';
+  }).join('');
 }
 async function admins() {
   const d = await api('/api/admins');
-  $('#admin-list').innerHTML = d.admins.map(id => `<span class="pill">${esc(id)} <button data-remove-admin="${esc(id)}" aria-label="Remove admin ${esc(id)}">×</button></span>`).join('') || '<p class="muted">No admin IDs configured.</p>';
+  ownerID = d.ownerID || '';
+  $('#owner-id').textContent = ownerID || 'Not configured (set OWNER_ID)';
+  $('#admin-list').innerHTML = d.admins.map(id => '<span class="pill">' + esc(id) + ' <button data-remove-admin="' + esc(id) + '" aria-label="Remove admin ' + esc(id) + '">×</button></span>').join('') || '<p class="muted">No admin IDs configured.</p>';
 }
 async function settings() {
   const s = await api('/api/settings'); $('#bot-name').value = s.botName; $('#prefix').value = s.prefix; $('#language').value = s.language || 'ar';
@@ -116,9 +126,30 @@ async function logs() {
   const d = await api(`/api/logs?q=${q}&type=${t}`);
   $('#logs-list').innerHTML = d.logs.slice().reverse().map(l => `<div class="log-row"><time>${esc(fmt(l.time))}</time><b class="log-${esc(l.type.toLowerCase())}">${esc(l.type)}</b><span>${esc(l.message)}</span></div>`).join('') || '<p class="muted">No logs captured in this process.</p>';
 }
+function applyRole(role) {
+  currentRole = role === 'owner' ? 'owner' : 'admin';
+  document.body.dataset.role = currentRole;
+  const badge = $('#role-label');
+  if (badge) {
+    badge.textContent = currentRole === 'owner' ? 'OWNER · FULL ACCESS' : 'ADMIN · READ ONLY';
+    badge.classList.toggle('owner', currentRole === 'owner');
+  }
+  $$('[data-owner-only]').forEach(node => { node.hidden = currentRole !== 'owner'; });
+  if (currentRole !== 'owner') {
+    const active = $('.page.active');
+    if (active && active.hasAttribute('data-owner-only')) {
+      $$('.page').forEach(p => p.classList.toggle('active', p.id === 'overview'));
+      $$('#nav a').forEach(n => n.classList.toggle('active', n.getAttribute('href') === '#overview'));
+      $('#page-title').textContent = 'Overview';
+    }
+  }
+}
 async function refreshAll() {
-  try { await Promise.all([status(), commands(), admins(), settings(), logs()]); }
-  catch (e) { if (!String(e.message).includes('Authentication')) notice(e.message, true); }
+  try {
+    const jobs = [status(), commands(), logs()];
+    if (currentRole === 'owner') jobs.push(admins(), settings());
+    await Promise.all(jobs);
+  } catch (e) { if (!String(e.message).includes('Authentication')) notice(e.message, true); }
 }
 async function action(name) {
   try {
@@ -214,7 +245,8 @@ $('#clear-logs').addEventListener('click', async () => {
   try {
     const s = await fetch('/api/session');
     if (!s.ok) { location.href = '/login'; return; }
-    const d = await s.json(); csrfToken = d.csrfToken; sessionStorage.setItem('vortex-csrf', csrfToken);
+    const d = await s.json(); csrfToken = d.csrfToken; currentRole = d.role || 'admin'; ownerID = d.ownerID || ''; sessionStorage.setItem('vortex-csrf', csrfToken);
+    applyRole(currentRole);
     await refreshAll();
     setInterval(() => status().catch(() => {}), 5000);
     setInterval(() => logs().catch(() => {}), 7000);
