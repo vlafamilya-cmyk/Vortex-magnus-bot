@@ -41,8 +41,8 @@ function loadConfig() {
 }
 function validateConfig(c) {
   if (!c || typeof c.prefix !== 'string' || !c.prefix.trim() || c.prefix.length > 12) throw new Error('Invalid prefix');
-  if (!Array.isArray(c.adminIDs) || c.adminIDs.some(id => typeof id !== 'string' || !/^\\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs');
-  if (c.ownerID && !/^\\d{1,30}$/.test(String(c.ownerID))) throw new Error('Invalid owner ID');
+  if (!Array.isArray(c.adminIDs) || c.adminIDs.some(id => typeof id !== 'string' || !/^\d{1,30}$/.test(id))) throw new Error('Invalid admin IDs');
+  if (c.ownerID && !/^\d{1,30}$/.test(String(c.ownerID))) throw new Error('Invalid owner ID');
   if (c.ownerID && c.adminIDs.includes(String(c.ownerID))) c.adminIDs = c.adminIDs.filter(id => id !== String(c.ownerID));
   return true;
 }
