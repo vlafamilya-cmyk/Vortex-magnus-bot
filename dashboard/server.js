@@ -142,7 +142,7 @@ async function startDashboard({ config, logger, runtime }) {
   app.get('/api/admins', (req, res) => res.json({ ownerID: config.ownerID || '', owners: config.ownerIDs || (config.ownerID ? [config.ownerID] : []), admins: config.adminIDs }));
   app.post('/api/owners', async (req, res) => {
     const id = String(req.body?.id || '').trim();
-    if (!/^\\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Enter a valid numeric Owner ID' });
+    if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Enter a valid numeric Owner ID' });
     const owners = config.ownerIDs || (config.ownerID ? [config.ownerID] : []);
     if (owners.includes(id)) return res.status(400).json({ error: 'This Owner ID is already saved' });
     if (owners.length >= 3) return res.status(400).json({ error: 'Maximum of 3 Owners reached' });
