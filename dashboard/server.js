@@ -113,7 +113,7 @@ async function startDashboard({ config, logger, runtime }) {
   app.get('/api/admins', (req, res) => res.json({ admins: config.adminIDs }));
   app.post('/api/admins', (req, res) => {
     const id = String(req.body?.id || '');
-    if (!/^\\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Invalid numeric ID' });
+    if (!/^\d{1,30}$/.test(id)) return res.status(400).json({ error: 'Invalid numeric ID' });
     if (!config.adminIDs.includes(id)) config.adminIDs.push(id);
     persistConfig(config).then(() => res.json({ admins: config.adminIDs })).catch(() => res.status(500).json({ error: 'Save failed' }));
   });
@@ -155,7 +155,7 @@ async function startDashboard({ config, logger, runtime }) {
   app.delete('/api/logs', (req, res) => { logBuffer.length = 0; res.json({ ok: true }); });
   app.get('/api/events', (req, res) => {
     res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    const send = () => res.write(`data: ${JSON.stringify(runtime.getState())}\\n\\n`);
+    const send = () => res.write(`data: ${JSON.stringify(runtime.getState())}\n\n`);
     send();
     const timer = setInterval(send, 5000);
     req.on('close', () => clearInterval(timer));
