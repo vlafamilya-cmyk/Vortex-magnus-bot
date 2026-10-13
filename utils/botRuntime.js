@@ -313,6 +313,21 @@ function createBotRuntime({ config, logger }) {
       nicknameGuard.handle(event).catch(e => logger.warn('NICKNAME_GUARD_FAILED', { error: String(e.message || e).slice(0, 200) }));
       if (!event || !['message', 'message_reply', 'messageCreate'].includes(event.type) || !event.body || !event.threadID) return;
       const body = String(event.body).trim();
+      // Stateful commands may consume plain numeric/confirmation replies without the command prefix.
+      const replySender = String(event.senderID || '');
+      const replyIsOwner = (config.ownerIDs || [config.ownerID]).filter(Boolean).includes(replySender);
+      const replyIsAdmin = replyIsOwner || config.adminIDs.includes(replySender);
+      const replyContext = { ...event, args: [], commandName: '', startedAt: Date.now(), config, runtime, isOwner: replyIsOwner, isAdmin: replyIsAdmin };
+      for (const command of loaded.unique) {
+        if (typeof command.handleReply !== 'function') continue;
+        try {
+          const handled = await command.handleReply(humanWriter.wrap(api), replyContext);
+          if (handled) return;
+        } catch (error) {
+          logger.warn('COMMAND_REPLY_HANDLER_FAILED', { name: command.name, error: String(error?.message || error).slice(0, 180) });
+          return;
+        }
+      }
       // All commands, including repeating-message controls, must use the dashboard-configured prefix.
       if (!body.startsWith(config.prefix)) return;
       const commandText = body.slice(config.prefix.length).trim();
