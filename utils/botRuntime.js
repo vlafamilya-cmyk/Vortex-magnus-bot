@@ -239,7 +239,7 @@ function createBotRuntime({ config, logger }) {
     },
     async disconnected(reason) {
       clearRepeatingMessages();
-      if (status === 'offline' && !api) return;
+      if (!api && (status === 'offline' || requiresSessionUpdate)) return;
       lastDisconnect = new Date().toISOString();
       mqttStatus = 'offline';
       api = null;
