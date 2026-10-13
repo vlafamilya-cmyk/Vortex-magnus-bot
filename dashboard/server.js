@@ -38,7 +38,18 @@ async function startDashboard({ config, logger, runtime }) {
   const csrf = (req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     const origin = req.get('origin');
-    if (origin && origin !== `${req.protocol}://${req.get('host')}`) return res.status(403).json({ error: 'Origin rejected' });
+    if (origin) {
+      let originUrl;
+      try { originUrl = new URL(origin); }
+      catch { return res.status(403).json({ error: 'Origin rejected' }); }
+      const requestHost = String(req.get('host') || '').toLowerCase();
+      if (!['http:', 'https:'].includes(originUrl.protocol) ||
+          originUrl.host.toLowerCase() !== requestHost ||
+          originUrl.username || originUrl.password || originUrl.pathname !== '/' ||
+          originUrl.search || originUrl.hash) {
+        return res.status(403).json({ error: 'Origin rejected' });
+      }
+    }
     if (!req.session.csrfToken || req.get('x-csrf-token') !== req.session.csrfToken) return res.status(403).json({ error: 'CSRF validation failed' });
     next();
   };
