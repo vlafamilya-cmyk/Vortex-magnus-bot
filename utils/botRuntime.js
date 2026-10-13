@@ -61,7 +61,7 @@ function createBotRuntime({ config, logger }) {
       return { count: loaded.unique.length, errors: loaded.errors };
     },
     async setAdminIDs(ids) {
-      if (!Array.isArray(ids) || ids.some(id => !/^\\d{1,30}$/.test(String(id)))) throw new Error('Invalid admin IDs');
+      if (!Array.isArray(ids) || ids.some(id => !/^\d{1,30}$/.test(String(id)))) throw new Error('Invalid admin IDs');
       config.adminIDs = [...new Set(ids.map(String).filter(id => id !== String(config.ownerID || '')))];
       await fs.mkdir(config.dataDir, { recursive: true, mode: 0o700 });
       await atomicWrite(path.join(config.dataDir, 'settings.json'), JSON.stringify({
@@ -182,7 +182,7 @@ function createBotRuntime({ config, logger }) {
       if (!event || event.type !== 'message' || !event.body || !event.threadID) return;
       const body = String(event.body);
       if (!body.startsWith(config.prefix)) return;
-      const [rawName, ...args] = body.slice(config.prefix.length).trim().split(/\\s+/);
+      const [rawName, ...args] = body.slice(config.prefix.length).trim().split(/\s+/);
       if (!rawName) return;
       const cmd = loaded.commands.get(rawName.toLowerCase());
       if (!cmd) return;
