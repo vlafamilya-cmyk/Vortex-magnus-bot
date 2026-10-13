@@ -22,14 +22,18 @@ function loadConfig() {
     }
   }
   const envAdmins = (process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
+  const envOwnerIDs = (process.env.OWNER_IDS || process.env.OWNER_ID || '').split(',').map(x => x.trim()).filter(Boolean);
+  const savedOwnerIDsExist = Array.isArray(saved.ownerIDs);
+  const ownerIDs = [...new Set((savedOwnerIDsExist ? saved.ownerIDs.map(String) : [...envOwnerIDs, ...(saved.ownerID || base.ownerID ? [String(saved.ownerID || base.ownerID)] : [])]).filter(Boolean))].slice(0, 3);
   const savedAdminsExist = Array.isArray(saved.adminIDs);
   const adminIDs = savedAdminsExist ? saved.adminIDs.map(String) : [...(base.adminIDs || []).map(String), ...envAdmins];
   return {
     ...base, ...saved,
     botName: process.env.BOT_NAME || saved.botName || base.botName || 'VORTEX',
     prefix: process.env.PREFIX || saved.prefix || base.prefix || '*',
-    adminIDs: [...new Set(adminIDs)],
-    ownerID: String(process.env.OWNER_ID || saved.ownerID || base.ownerID || ''),
+    adminIDs: [...new Set(adminIDs)].filter(id => !ownerIDs.includes(id)).slice(0, 20),
+    ownerIDs,
+    ownerID: ownerIDs[0] || '',
     adminDashboardPassword: process.env.ADMIN_DASHBOARD_PASSWORD || '',
     dataDir,
     port: Number(process.env.PORT) || 3000,
