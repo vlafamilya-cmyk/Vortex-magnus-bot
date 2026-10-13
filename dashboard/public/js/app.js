@@ -140,7 +140,8 @@ async function status() {
     ['Last reconnect', fmt(s.lastDisconnect)]].map(([k, v]) => `<div class="detail-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join('');
   $('#footer-version').textContent = 'v' + s.version;
   updateSessionHealth(s);
-  updateAppStateRefresh(s.appStateRefresh);\n}
+  updateAppStateRefresh(s.appStateRefresh);
+}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function commands() {
   const d = await api('/api/commands');
