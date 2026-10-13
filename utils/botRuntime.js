@@ -53,7 +53,16 @@ function createBotRuntime({ config, logger }) {
     logger.warn('SESSION_REAUTH_REQUIRED', { reason: 'authentication-or-checkpoint-error' });
   }
   const nicknameGuard = new NicknameGuard({ getApi: () => api, logger, nickname: '𝑽𝑶𝑹𝑻𝑬𝑿 →' });
-  const humanWriter = createHumanWriter({ logger, minIntervalMs: 1200, globalIntervalMs: 900, duplicateWindowMs: 8000, maxPerMinute: 20 });
+  const humanWriter = createHumanWriter({
+    logger, minIntervalMs: 1200, globalIntervalMs: 900, duplicateWindowMs: 8000, maxPerMinute: 20,
+    onSafetyStop: ({ type, reason }) => {
+      clearRepeatingMessages();
+      logger.warn('OUTBOUND_AUTOMATION_STOPPED', { type, reason });
+      if (type === 'session' && runtime) {
+        runtime.disconnected('checkpoint/login required after outbound send error').catch(() => {});
+      }
+    }
+  });
   const seenCommandMessages = new Map();
   const repeatingMessages = new Map();
   function clearRepeatingMessages() {
@@ -144,6 +153,7 @@ function createBotRuntime({ config, logger }) {
       appState = parsed;
       appStatePresent = true;
       sessionCleared = false;
+      humanWriter.resetProtection();
       await initializeAppStateRefreshManager();
       requiresSessionUpdate = false;
       sessionHealth = 'checking';

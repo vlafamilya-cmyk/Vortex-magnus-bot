@@ -141,6 +141,19 @@ async function status() {
   $('#footer-version').textContent = 'v' + s.version;
   updateSessionHealth(s);
   updateAppStateRefresh(s.appStateRefresh);
+  const outbound = s.outboundProtection || {};
+  const outboundNode = $('#outbound-protection-status');
+  if (outboundNode) {
+    if (outbound.paused) {
+      const until = outbound.pausedUntil ? fmt(new Date(outbound.pausedUntil).toISOString()) : 'until a fresh AppState is saved';
+      outboundNode.textContent = 'PAUSED · ' + (outbound.pauseReason || 'safety stop') + ' · ' + until +
+        ' · failures in window: ' + (outbound.failuresLastWindow || 0);
+    } else {
+      outboundNode.textContent = 'ACTIVE · sends in last minute: ' + (outbound.sendsLastMinute || 0) +
+        ' · failures in window: ' + (outbound.failuresLastWindow || 0) +
+        ' · automatic pause after ' + (outbound.maxConsecutiveFailures || 3) + ' consecutive send failures';
+    }
+  }
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function commands() {
