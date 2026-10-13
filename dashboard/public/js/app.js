@@ -139,7 +139,8 @@ async function status() {
     ['Uptime', duration(s.uptimeMs)], ['Loaded commands', s.commands], ['Last error', s.lastError || 'None'],
     ['Last reconnect', fmt(s.lastDisconnect)]].map(([k, v]) => `<div class="detail-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join('');
   $('#footer-version').textContent = 'v' + s.version;
-  updateSessionHealth(s);\n  updateAppStateRefresh(s.appStateRefresh);\n}
+  updateSessionHealth(s);
+  updateAppStateRefresh(s.appStateRefresh);\n}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function commands() {
   const d = await api('/api/commands');
