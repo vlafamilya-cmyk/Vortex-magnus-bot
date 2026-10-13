@@ -4,38 +4,35 @@ const crypto = require('node:crypto');
 
 function loadConfig() {
   const rootDir = path.join(__dirname, '..');
-  const file = path.join(rootDir, 'config.json');
-  const base = JSON.parse(fs.readFileSync(file, 'utf8'));
-  // Use a normal in-project path; Railway can mount a Volume at /app/data.
-  const dataDir = path.join(rootDir, 'data');
+  const base = JSON.parse(fs.readFileSync(path.join(rootDir, 'config.json'), 'utf8'));
+  const dataDir = process.env.DATA_DIR || path.join(rootDir, 'data');
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
   let sessionSecret = process.env.SESSION_SECRET || '';
   const secretFile = path.join(dataDir, 'session-secret');
   if (!sessionSecret) {
-    try {
-      sessionSecret = fs.readFileSync(secretFile, 'utf8').trim();
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
+    try { sessionSecret = fs.readFileSync(secretFile, 'utf8').trim(); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (!sessionSecret || sessionSecret.length < 32) {
       sessionSecret = crypto.randomBytes(48).toString('hex');
       fs.writeFileSync(secretFile, sessionSecret, { mode: 0o600, flag: 'w' });
       try { fs.chmodSync(secretFile, 0o600); } catch {}
     }
   }
-
   const admins = (process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
   return {
-    ...base,
-    botName: process.env.BOT_NAME || base.botName || 'VORTEX',
-    prefix: process.env.PREFIX || base.prefix || '*',
-    adminIDs: [...new Set([...(base.adminIDs || []), ...admins].map(String))],
+    ...base, ...saved,
+    botName: process.env.BOT_NAME || saved.botName || base.botName || 'VORTEX',
+    prefix: process.env.PREFIX || saved.prefix || base.prefix || '*',
+    adminIDs: [...new Set([...(saved.adminIDs || base.adminIDs || []), ...admins].map(String))],
     dataDir,
     port: Number(process.env.PORT) || 3000,
     dashboardPassword: process.env.DASHBOARD_PASSWORD || 'vortex110',
     sessionSecret,
-    appStateJson: process.env.APPSTATE_JSON || ''
+    appStateJson: process.env.APPSTATE_JSON || '',
+    appStateFile: process.env.APPSTATE_FILE || ''
   };
 }
 function validateConfig(c) {
