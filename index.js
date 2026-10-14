@@ -9,7 +9,7 @@ async function main() {
   const runtime = createBotRuntime({ config, logger });
   const secondConfig = { ...config, dataDir: require('node:path').join(config.dataDir, 'account-2'), appStateJson: '', appStateFile: '', ownerIDs: [...config.ownerIDs], adminIDs: [...config.adminIDs] };
   const secondRuntime = createBotRuntime({ config: secondConfig, logger });
-  const server = await startDashboard({ config, logger, runtime, accounts: { primary: runtime, secondary: secondRuntime } });
+  const server = await startDashboard({ config, logger, runtime, accounts: { primary: runtime, secondary: secondRuntime, secondaryConfig: secondConfig } });
   await Promise.all([
     runtime.start().catch(err => logger.error('BOT_START_FAILED', { account: 1, error: err.message })),
     secondRuntime.start().catch(err => logger.error('BOT_START_FAILED', { account: 2, error: err.message }))
