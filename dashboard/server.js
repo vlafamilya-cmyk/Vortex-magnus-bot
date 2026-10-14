@@ -302,8 +302,10 @@ async function startDashboard({ config, logger, runtime, accounts = {} }) {
   return server;
 
   async function persistConfig(c) {
+    const settings = { botName: c.botName, prefix: c.prefix, language: c.language, ownerIDs: c.ownerIDs || (c.ownerID ? [c.ownerID] : []), adminIDs: c.adminIDs };
     const file = path.join(c.dataDir, 'settings.json');
-    await atomicWrite(file, JSON.stringify({ botName: c.botName, prefix: c.prefix, language: c.language, ownerIDs: c.ownerIDs || (c.ownerID ? [c.ownerID] : []), adminIDs: c.adminIDs }, null, 2), 0o600);
+    await atomicWrite(file, JSON.stringify(settings, null, 2), 0o600);
+    if (accounts.secondaryConfig) Object.assign(accounts.secondaryConfig, { ...settings, ownerIDs: [...settings.ownerIDs], adminIDs: [...settings.adminIDs] });
   }
 }
 module.exports = { startDashboard };
