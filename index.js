@@ -7,11 +7,19 @@ async function main() {
   const logger = createLogger();
   const config = loadConfig();
   const runtime = createBotRuntime({ config, logger });
-  const server = await startDashboard({ config, logger, runtime });
-  await runtime.start().catch(err => logger.error('BOT_START_FAILED', { error: err.message }));
+  const secondConfig = { ...config, dataDir: require('node:path').join(config.dataDir, 'account-2'), appStateJson: '', appStateFile: '', ownerIDs: [...config.ownerIDs], adminIDs: [...config.adminIDs] };
+  const secondRuntime = createBotRuntime({ config: secondConfig, logger });
+  const server = await startDashboard({ config, logger, runtime, accounts: { primary: runtime, secondary: secondRuntime } });
+  await Promise.all([
+    runtime.start().catch(err => logger.error('BOT_START_FAILED', { account: 1, error: err.message })),
+    secondRuntime.start().catch(err => logger.error('BOT_START_FAILED', { account: 2, error: err.message }))
+  ]);
   const shutdown = async () => {
     logger.info('SHUTDOWN_REQUESTED');
-    await runtime.stop().catch(err => logger.warn('BOT_STOP_FAILED', { error: err.message }));
+    await Promise.all([
+      runtime.stop().catch(err => logger.warn('BOT_STOP_FAILED', { account: 1, error: err.message })),
+      secondRuntime.stop().catch(err => logger.warn('BOT_STOP_FAILED', { account: 2, error: err.message }))
+    ]);
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();
   };
