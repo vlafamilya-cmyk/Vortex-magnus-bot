@@ -155,6 +155,19 @@ async function status() {
     }
   }
 }
+async function secondAccountStatus() {
+  if (currentRole !== 'owner' || !$('#account2-status')) return;
+  try {
+    const s = await api('/api/accounts/2/status');
+    $('#account2-status').textContent = s.status || 'unknown';
+    $('#account2-detail').textContent = s.appStateConfigured
+      ? (s.sessionMessage || (s.connected ? 'Connected' : 'AppState saved'))
+      : 'No AppState saved for Account 2.';
+  } catch (e) {
+    $('#account2-status').textContent = 'Unavailable';
+    $('#account2-detail').textContent = e.message;
+  }
+}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function commands() {
   const d = await api('/api/commands');
@@ -205,6 +218,7 @@ function applyRole(role) {
 async function refreshAll() {
   try {
     const jobs = [status(), commands(), logs()];
+    if (currentRole === 'owner') jobs.push(secondAccountStatus());
     if (currentRole === 'owner') jobs.push(admins(), settings());
     await Promise.all(jobs);
   } catch (e) { if (!String(e.message).includes('Authentication')) notice(e.message, true); }
@@ -292,6 +306,45 @@ async function saveAppState(connect) {
     await status();
   } catch (e) { notice(e.message, true); }
 }
+$('#account2-validate-appstate')?.addEventListener('click', async () => {
+  try {
+    const appState = JSON.parse($('#account2-appstate-input').value);
+    await api('/api/accounts/2/appstate/validate', { method: 'POST', body: JSON.stringify({ appState }) });
+    $('#account2-appstate-result').textContent = 'Valid AppState format. Content was not logged.';
+    notice('Account 2 AppState format is valid.');
+  } catch (e) { $('#account2-appstate-result').textContent = e.message; notice(e.message, true); }
+});
+async function saveAccount2AppState(connect) {
+  try {
+    const appState = JSON.parse($('#account2-appstate-input').value);
+    await api('/api/accounts/2/appstate/' + (connect ? 'connect' : 'save'), { method: 'POST', body: JSON.stringify({ appState }) });
+    $('#account2-appstate-input').value = '';
+    $('#account2-appstate-result').textContent = connect ? 'Connection attempt completed.' : 'AppState saved securely.';
+    notice(connect ? 'Account 2 connection attempt completed.' : 'Account 2 AppState saved securely.');
+    await secondAccountStatus();
+  } catch (e) { notice(e.message, true); }
+}
+$('#account2-save-appstate')?.addEventListener('click', () => saveAccount2AppState(false));
+$('#account2-connect-appstate')?.addEventListener('click', () => saveAccount2AppState(true));
+$('#account2-remove-session')?.addEventListener('click', async () => {
+  if (!confirm('Remove Account 2 session and its saved AppState?')) return;
+  try {
+    await api('/api/accounts/2/appstate/session', { method: 'DELETE' });
+    $('#account2-appstate-input').value = '';
+    $('#account2-appstate-result').textContent = 'Account 2 session removed.';
+    notice('Account 2 session removed.');
+    await secondAccountStatus();
+  } catch (e) { notice(e.message, true); }
+});
+document.addEventListener('click', async e => {
+  const button = e.target.closest('[data-account2-action]');
+  if (!button) return;
+  try {
+    const d = await api('/api/accounts/2/connection/' + button.dataset.account2Action, { method: 'POST', body: '{}' });
+    notice('Account 2 status: ' + (d.status || 'updated'));
+    await secondAccountStatus();
+  } catch (error) { notice(error.message, true); }
+});
 $('#refresh-commands').addEventListener('click', async () => {
   try { await api('/api/commands/refresh', { method: 'POST', body: '{}' }); await commands(); notice('Commands refreshed.'); }
   catch (e) { notice(e.message, true); }
@@ -337,7 +390,7 @@ $('#clear-logs').addEventListener('click', async () => {
     const d = await s.json(); csrfToken = d.csrfToken; currentRole = d.role || 'admin'; ownerID = d.ownerID || ''; sessionStorage.setItem('vortex-csrf', csrfToken);
     applyRole(currentRole);
     await refreshAll();
-    setInterval(() => status().catch(() => {}), 5000);
+    setInterval(() => { status().catch(() => {}); secondAccountStatus().catch(() => {}); }, 5000);
     setInterval(() => logs().catch(() => {}), 7000);
     setInterval(updateAppStateCountdown, 1000);
   } catch { location.href = '/login'; }

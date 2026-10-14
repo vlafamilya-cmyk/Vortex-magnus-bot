@@ -9,7 +9,7 @@ const { atomicWrite } = require('../utils/atomicFile');
 const { validateConfig } = require('../utils/config');
 const roleLists = require('../utils/roleLists');
 
-async function startDashboard({ config, logger, runtime }) {
+async function startDashboard({ config, logger, runtime, accounts = {} }) {
   if (!config.dashboardPassword || !config.sessionSecret || config.sessionSecret.length < 32) {
     throw new Error('Dashboard password or session secret is not configured correctly.');
   }
@@ -87,6 +87,50 @@ async function startDashboard({ config, logger, runtime }) {
     if (readOnly) return next();
     return res.status(403).json({ error: 'Owner access required' });
   });
+  // Account 2 has an isolated runtime and data directory; secrets are never returned.
+  const secondaryRuntime = accounts.secondary;
+  app.get('/api/accounts/2/status', (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    res.json(secondaryRuntime.getState());
+  });
+  app.post('/api/accounts/2/appstate/validate', (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    try { validateAppState(req.body?.appState); res.json({ valid: true }); }
+    catch (e) { res.status(400).json({ valid: false, error: e.message }); }
+  });
+  app.post('/api/accounts/2/appstate/save', async (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    try { validateAppState(req.body?.appState); res.json(await secondaryRuntime.saveAppState(req.body.appState, false)); }
+    catch (e) { res.status(400).json({ error: e.message }); }
+  });
+  app.post('/api/accounts/2/appstate/connect', async (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    try {
+      validateAppState(req.body?.appState);
+      await secondaryRuntime.saveAppState(req.body.appState, false);
+      res.json(await secondaryRuntime.connect());
+    } catch (e) { res.status(503).json({ error: String(e.message || e).slice(0, 240) }); }
+  });
+  app.delete('/api/accounts/2/appstate/session', async (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    try { res.json(await secondaryRuntime.clearAppStateSession()); }
+    catch (e) { logger.error('SECONDARY_SESSION_REMOVE_FAILED', { error: String(e.message || e).slice(0, 180) }); res.status(500).json({ error: 'Could not remove the second session completely.' }); }
+  });
+  app.post('/api/accounts/2/connection/connect', async (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    try { res.json(await secondaryRuntime.connect()); }
+    catch (e) { res.status(503).json({ error: e.message }); }
+  });
+  app.post('/api/accounts/2/connection/reconnect', async (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    try { await secondaryRuntime.disconnect(); res.json(await secondaryRuntime.connect()); }
+    catch (e) { res.status(503).json({ error: e.message }); }
+  });
+  app.post('/api/accounts/2/connection/disconnect', async (req, res) => {
+    if (!secondaryRuntime) return res.status(503).json({ error: 'Second account is not configured' });
+    res.json(await secondaryRuntime.disconnect());
+  });
+
   app.get('/api/status', (req, res) => res.json(runtime.getState()));
   app.get('/api/commands', (req, res) => res.json({ commands: runtime.getCommands() }));
   app.get('/api/commands/:name/source', (req, res) => {
@@ -258,8 +302,10 @@ async function startDashboard({ config, logger, runtime }) {
   return server;
 
   async function persistConfig(c) {
+    const settings = { botName: c.botName, prefix: c.prefix, language: c.language, ownerIDs: c.ownerIDs || (c.ownerID ? [c.ownerID] : []), adminIDs: c.adminIDs };
     const file = path.join(c.dataDir, 'settings.json');
-    await atomicWrite(file, JSON.stringify({ botName: c.botName, prefix: c.prefix, language: c.language, ownerIDs: c.ownerIDs || (c.ownerID ? [c.ownerID] : []), adminIDs: c.adminIDs }, null, 2), 0o600);
+    await atomicWrite(file, JSON.stringify(settings, null, 2), 0o600);
+    if (accounts.secondaryConfig) Object.assign(accounts.secondaryConfig, { ...settings, ownerIDs: [...settings.ownerIDs], adminIDs: [...settings.adminIDs] });
   }
 }
 module.exports = { startDashboard };
