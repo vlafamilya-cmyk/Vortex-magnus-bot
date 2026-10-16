@@ -6,12 +6,11 @@ const { atomicWrite } = require('./atomicFile');
 const DEFAULT_INTERVAL_MS = 3 * 60 * 60 * 1000;
 
 class AppStateRefreshManager {
-  constructor({ dataDir, getApi, ensureConnected, setAppState, logger, intervalMs = DEFAULT_INTERVAL_MS }) {
+  constructor({ dataDir, getApi, setAppState, logger, intervalMs = DEFAULT_INTERVAL_MS }) {
     this.dataDir = dataDir;
     this.file = path.join(dataDir, 'appstate-refresh-stats.json');
     this.appStateFile = path.join(dataDir, 'appstate.json');
     this.getApi = getApi;
-    this.ensureConnected = ensureConnected;
     this.setAppState = setAppState;
     this.logger = logger;
     this.intervalMs = intervalMs;
@@ -81,10 +80,12 @@ class AppStateRefreshManager {
     this.stats.refreshing = true;
     this.stats.lastAttemptAt = new Date().toISOString();
     try {
-      if (!this.getApi()) await this.ensureConnected();
+      // Export the current live session only. Never log in, reconnect, disconnect,
+      // or restart the runtime as part of a scheduled/manual AppState refresh.
       const api = this.getApi();
-      if (!api || typeof api.getAppState !== 'function') {
-        throw new Error('The connected FCA client does not expose getAppState(); cookies cannot be refreshed safely.');
+      if (!api) throw new Error('Bot is not connected; refresh skipped to avoid reconnecting or restarting it.');
+      if (typeof api.getAppState !== 'function') {
+        throw new Error('The connected FCA client does not expose getAppState(); session state cannot be exported safely.');
       }
       const refreshed = validateAppState(await api.getAppState());
       await fs.mkdir(this.dataDir, { recursive: true, mode: 0o700 });
@@ -98,7 +99,7 @@ class AppStateRefreshManager {
     } catch (error) {
       this.stats.failureCount += 1;
       this.stats.lastFailureAt = new Date().toISOString();
-      this.stats.lastError = String(error.message || '').includes('getAppState') ? 'FCA client does not expose getAppState().' : 'Refresh failed. Check the connection and FCA runtime status.';
+      this.stats.lastError = String(error.message || '').includes('getAppState') ? 'FCA client does not expose getAppState().' : String(error.message || '').includes('not connected') ? 'Bot is offline; refresh skipped without reconnecting.' : 'Refresh failed. Check the connection and FCA runtime status.';
       this.logger.warn('APPSTATE_REFRESH_FAILED', { manual, count: this.stats.failureCount, error: this.stats.lastError });
       throw error;
     } finally {
